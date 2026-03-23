@@ -1,12 +1,14 @@
 import boto3
 import json
+import os
 
 s3 = boto3.client("s3")
 sqs = boto3.client("sqs")
 bedrock = boto3.client("bedrock-runtime", region_name="eu-west-2")
 
-QUEUE_URL = "https://sqs.eu-west-2.amazonaws.com/272493677414/factsheet-bedrock-output"
-MODEL_ID = "amazon.nova-lite-v1:0"
+QUEUE_URL = os.environ["QUEUE_URL"]
+MODEL_ID = os.environ["MODEL_ID"]
+
 
 PROMPT = """
 This document is a fund report.

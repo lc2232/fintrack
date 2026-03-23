@@ -1,10 +1,9 @@
 import json
 import boto3
-
-TABLE_NAME = "fintrack-factsheets"
+import os
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(TABLE_NAME)
+table = dynamodb.Table(os.environ["DYNAMODB_TABLE"])
 
 # Expected JSON event
 # {
