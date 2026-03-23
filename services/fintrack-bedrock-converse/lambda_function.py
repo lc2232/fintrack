@@ -55,6 +55,8 @@ def lambda_handler(event, context):
     bucket_name = event["Records"][0]["s3"]["bucket"]["name"]
     object_key = event["Records"][0]["s3"]["object"]["key"]
 
+    # Add a call to updateItem, conditional update with key = JobId, set to processing
+
     if object_key.endswith((".pdf", ".PDF")):
         try:
             doc_bytes = s3.get_object(Bucket=bucket_name, Key=object_key)["Body"].read()
@@ -63,7 +65,9 @@ def lambda_handler(event, context):
             print(response)
 
             # Forward the model's message object directly to SQS
-            message = response.get("output", {}).get("message")
+            message = {}
+            message["jobId"] = object_key
+            message["content"] = response.get("output", {}).get("message")
 
             if message and message.get("content"):
                 send_message_to_sqs(message)

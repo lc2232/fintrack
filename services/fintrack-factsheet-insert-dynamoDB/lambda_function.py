@@ -58,7 +58,7 @@ def lambda_handler(event, context):
         }
 
         # Insert into DynamoDB
-        table.put_item(Item=item)
+        table.put_item(Item=item)  # <-- Change to updateItem (status = completed)
         print(f"Successfully inserted item for ISIN: {isin}")
 
         return {
