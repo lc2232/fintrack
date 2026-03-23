@@ -27,3 +27,13 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# pytest
+.pytest_cache/
+
+# Terraform
+.terraform
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+out/
