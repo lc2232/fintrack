@@ -51,6 +51,8 @@ def lambda_handler(event, context):
                 Key={
                     "jobId": job_id,
                 },
+                # Only update if the job exists and is in processing state, helps ensure idempotent updates
+                ConditionExpression="attribute_exists(jobId) AND #s = 'processing'",
                 UpdateExpression="SET #s=:s, #i=:i, #n=:n, #d=:d, #m=:m, #t=:t, #e=:e",
                 ExpressionAttributeValues={
                     ":s": "completed",
