@@ -14,6 +14,7 @@ LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-upload-post")
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def setup_path():
     """Add the lambda directory to sys.path and ensure a clean module import."""
@@ -76,7 +77,9 @@ def lambda_context():
     ctx = MagicMock()
     ctx.function_name = "fintrack-upload-post"
     ctx.memory_limit_in_mb = 128
-    ctx.invoked_function_arn = "arn:aws:lambda:eu-west-2:123456789012:function:fintrack-upload-post"
+    ctx.invoked_function_arn = (
+        "arn:aws:lambda:eu-west-2:123456789012:function:fintrack-upload-post"
+    )
     ctx.aws_request_id = "test-request-id"
     return ctx
 
@@ -90,6 +93,7 @@ def lambda_context():
 # The handler itself returns {"statusCode": <int>, "body": "<json-string of payload>"}.
 # We therefore need to unwrap two layers to reach the actual payload dict.
 # ---------------------------------------------------------------------------
+
 
 def _unwrap(raw: dict) -> tuple[int, dict]:
     """
@@ -128,6 +132,7 @@ UUID_RE = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
 class TestUploadPostSuccess:
     def test_returns_200(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 200
@@ -135,6 +140,7 @@ class TestUploadPostSuccess:
     def test_response_body_schema(self, mocked_aws, api_event, lambda_context):
         """Payload must contain exactly 'jobId' and 'uploadUrl'."""
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert set(payload.keys()) == {"jobId", "uploadUrl"}, (
@@ -144,6 +150,7 @@ class TestUploadPostSuccess:
     def test_job_id_is_uuid4(self, mocked_aws, api_event, lambda_context):
         import re
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert re.match(UUID_RE, payload["jobId"]), (
@@ -152,6 +159,7 @@ class TestUploadPostSuccess:
 
     def test_upload_url_is_s3_presigned(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
@@ -162,9 +170,12 @@ class TestUploadPostSuccess:
             "uploadUrl does not look like a presigned S3 URL (missing X-Amz-Signature)"
         )
 
-    def test_upload_url_contains_correct_key_prefix(self, mocked_aws, api_event, lambda_context):
+    def test_upload_url_contains_correct_key_prefix(
+        self, mocked_aws, api_event, lambda_context
+    ):
         """The presigned URL key must sit under the 'factsheets/' prefix."""
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
@@ -172,9 +183,12 @@ class TestUploadPostSuccess:
             "uploadUrl does not contain expected 'factsheets/' key prefix"
         )
 
-    def test_upload_url_content_type_is_pdf(self, mocked_aws, api_event, lambda_context):
+    def test_upload_url_content_type_is_pdf(
+        self, mocked_aws, api_event, lambda_context
+    ):
         """The presigned URL must be signed with content-type (enforces application/pdf upload)."""
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
@@ -186,6 +200,7 @@ class TestUploadPostSuccess:
     def test_job_written_to_dynamodb(self, mocked_aws, api_event, lambda_context):
         """A 'pending' job record must be created in DynamoDB with the returned jobId."""
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
@@ -200,6 +215,7 @@ class TestUploadPostSuccess:
     def test_dynamodb_item_schema_strict(self, mocked_aws, api_event, lambda_context):
         """DynamoDB item must contain exactly {'jobId', 'status'} — no extra attributes."""
         import lambda_function
+
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
@@ -208,8 +224,11 @@ class TestUploadPostSuccess:
             f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
         )
 
-    def test_each_invocation_produces_unique_job_id(self, mocked_aws, api_event, lambda_context):
+    def test_each_invocation_produces_unique_job_id(
+        self, mocked_aws, api_event, lambda_context
+    ):
         import lambda_function
+
         ids = set()
         for _ in range(5):
             raw = lambda_function.lambda_handler(api_event, lambda_context)
@@ -227,16 +246,27 @@ class TestUploadPostSuccess:
 # the inner statusCode and inner payload, not the outer resolver statusCode.
 # ---------------------------------------------------------------------------
 
+
 class TestUploadPostDynamoDBFailure:
     def _invoke_with_dynamo_error(self, lambda_function, api_event, lambda_context):
-        with patch.object(lambda_function.table, "put_item", side_effect=ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Simulated failure"}},
-            "PutItem",
-        )):
+        with patch.object(
+            lambda_function.table,
+            "put_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Simulated failure",
+                    }
+                },
+                "PutItem",
+            ),
+        ):
             return lambda_function.lambda_handler(api_event, lambda_context)
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 500
@@ -244,6 +274,7 @@ class TestUploadPostDynamoDBFailure:
     def test_error_body_schema_strict(self, mocked_aws, api_event, lambda_context):
         """Error payload must contain exactly the 'message' key."""
         import lambda_function
+
         raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert set(payload.keys()) == {"message"}, (
@@ -252,16 +283,32 @@ class TestUploadPostDynamoDBFailure:
 
     def test_error_message_value(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert payload["message"] == "Failed to create job"
 
-    def test_no_presigned_url_generated_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
+    def test_no_presigned_url_generated_on_dynamodb_error(
+        self, mocked_aws, api_event, lambda_context
+    ):
         """If DynamoDB fails, S3 generate_presigned_url must not be called."""
         import lambda_function
-        with patch.object(lambda_function.table, "put_item", side_effect=ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Simulated failure"}},
-            "PutItem",
-        )), patch.object(lambda_function.s3, "generate_presigned_url") as mock_presign:
+
+        with (
+            patch.object(
+                lambda_function.table,
+                "put_item",
+                side_effect=ClientError(
+                    {
+                        "Error": {
+                            "Code": "InternalServerError",
+                            "Message": "Simulated failure",
+                        }
+                    },
+                    "PutItem",
+                ),
+            ),
+            patch.object(lambda_function.s3, "generate_presigned_url") as mock_presign,
+        ):
             lambda_function.lambda_handler(api_event, lambda_context)
             mock_presign.assert_not_called()

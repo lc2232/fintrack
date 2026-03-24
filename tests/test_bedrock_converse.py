@@ -13,6 +13,7 @@ LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-bedrock-converse")
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def setup_path():
     sys.path.insert(0, LAMBDA_DIR)
@@ -35,7 +36,9 @@ def aws_credentials():
     os.environ["AWS_SESSION_TOKEN"] = "testing"
     os.environ["AWS_DEFAULT_REGION"] = "eu-west-2"
     os.environ["DYNAMODB_TABLE"] = "fintrack-jobs"
-    os.environ["QUEUE_URL"] = "https://sqs.eu-west-2.amazonaws.com/123456789012/factsheet-bedrock-output"
+    os.environ["QUEUE_URL"] = (
+        "https://sqs.eu-west-2.amazonaws.com/123456789012/factsheet-bedrock-output"
+    )
     os.environ["MODEL_ID"] = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 
 
@@ -77,6 +80,7 @@ def mocked_aws(aws_credentials):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @patch("lambda_function.bedrock_model_converse")
 def test_lambda_handler_success(mock_converse, mocked_aws):
     import lambda_function
@@ -88,7 +92,9 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
         "output": {
             "message": {
                 "role": "assistant",
-                "content": [{"text": json.dumps({"isin": "TEST1234", "name": "Test Fund"})}],
+                "content": [
+                    {"text": json.dumps({"isin": "TEST1234", "name": "Test Fund"})}
+                ],
             }
         }
     }
@@ -114,7 +120,9 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
     assert "TEST1234" in body["extracted_text"]
 
     # --- DynamoDB status set to 'processing' ---
-    item = mocked_aws["dynamo_table"].get_item(Key={"jobId": "sample-fund-report.pdf"})["Item"]
+    item = mocked_aws["dynamo_table"].get_item(Key={"jobId": "sample-fund-report.pdf"})[
+        "Item"
+    ]
     assert item["status"] == "processing", (
         f"Expected DynamoDB status 'processing', got '{item.get('status')}'"
     )
@@ -172,4 +180,6 @@ def test_no_sqs_message_when_bedrock_returns_empty(mock_converse, mocked_aws):
         QueueUrl=mocked_aws["queue_url"],
         MaxNumberOfMessages=1,
     )
-    assert "Messages" not in result, "Expected no SQS message when Bedrock returns empty text"
+    assert "Messages" not in result, (
+        "Expected no SQS message when Bedrock returns empty text"
+    )
