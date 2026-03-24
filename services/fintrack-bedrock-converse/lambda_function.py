@@ -136,7 +136,6 @@ def bedrock_model_converse(prompt, doc_bytes):
             messages=messages,
             inferenceConfig={
                 "temperature": 0.1,  # Lower temperature for more deterministic output
-                "maxTokens": 500,
             },
         )
 
