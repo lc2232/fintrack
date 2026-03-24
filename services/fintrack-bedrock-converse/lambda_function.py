@@ -65,10 +65,11 @@ def lambda_handler(event, context):
                 "jobId": document_name,
             },
             # Only update if the job exists and is in pending state, helps ensure idempotent updates
-            ConditionExpression="attribute_exists(jobId) AND #s = 'pending'",
+            ConditionExpression="attribute_exists(jobId) AND #s = :expected_status",
             UpdateExpression="SET #s = :s",
             ExpressionAttributeValues={
                 ":s": "processing",
+                ":expected_status": "pending",
             },
             ExpressionAttributeNames={"#s": "status"},
             ReturnValues="UPDATED_NEW",
