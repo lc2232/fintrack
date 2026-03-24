@@ -1,0 +1,26 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /upload",
+  "rawPath": "/upload",
+  "rawQueryString": "",
+  "headers": {
+    "content-type": "application/json",
+    "host": "abc123.execute-api.eu-west-2.amazonaws.com"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "abc123",
+    "http": {
+      "method": "POST",
+      "path": "/upload",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "1.2.3.4",
+      "userAgent": "pytest"
+    },
+    "requestId": "test-request-id",
+    "routeKey": "POST /upload",
+    "stage": "$default"
+  },
+  "body": null,
+  "isBase64Encoded": false
+}
