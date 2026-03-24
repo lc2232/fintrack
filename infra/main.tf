@@ -140,7 +140,7 @@ resource "aws_iam_policy" "fintrack_bedrock_converse_policy" {
       },
       {
         Effect   = "Allow"
-        Action   = "dynamodb:PutItem"
+        Action   = "dynamodb:UpdateItem"
         Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
       }
     ]
@@ -184,7 +184,7 @@ resource "aws_iam_policy" "fintrack_dynamodb_insert_policy" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = "dynamodb:PutItem"
+        Action   = "dynamodb:UpdateItem"
         Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
       },
       {
@@ -275,6 +275,7 @@ resource "aws_lambda_function" "fintrack_bedrock_converse_lambda_function" {
     variables = {
       QUEUE_URL      = aws_sqs_queue.factsheet_bedrock_output_queue.url
       MODEL_ID       = var.model_id
+      DYNAMODB_TABLE = aws_dynamodb_table.fintrack_factsheet_table.name
     }
   }
 }
@@ -307,7 +308,7 @@ data "aws_ecr_repository" "fintrack-upload-repository" {
 
 resource "aws_lambda_function" "fintrack_upload_handler_lambda_function" {
   function_name = "fintrack_upload_handler_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v0.2"
+  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v0.4"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_upload_handler_lambda_role.arn
   timeout       = 60
@@ -429,4 +430,9 @@ output "queue_url" {
 output "dynamodb_table_name" {
   description = "Name of the DynamoDB table"
   value       = aws_dynamodb_table.fintrack_factsheet_table.name
+}
+
+output "api_gateway_url" {
+  description = "The URL of the API Gateway"
+  value       = aws_apigatewayv2_api.lambda_api.api_endpoint
 }
