@@ -368,6 +368,21 @@ resource "aws_apigatewayv2_route" "fintrack_upload_route" {
 
   route_key = "POST /upload"
   target    = "integrations/${aws_apigatewayv2_integration.fintrack_upload_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_authorizer" "fintrack_authoriser" {
+  api_id                            = aws_apigatewayv2_api.lambda_api.id
+  authorizer_type                   = "JWT"
+  identity_sources                  = ["$request.header.Authorization"]
+  name                              = "fintrack-user-authorizer"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.fintrack_user_pool_client.id]
+    issuer   = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.fintrack_user_pool.id}"
+  }
 }
 
 resource "aws_cloudwatch_log_group" "api_gw_log_group" {
@@ -396,6 +411,23 @@ resource "aws_s3_bucket_notification" "fintrack_factsheet_bucket_notification" {
   }
 
   depends_on = [aws_lambda_permission.allow_bucket]
+}
+
+# ============== Cognito Resources ============== 
+
+resource "aws_cognito_user_pool_domain" "fintrack_user_pool_domain" {
+  domain       = "fintrack-domain"
+  user_pool_id = aws_cognito_user_pool.fintrack_user_pool.id
+}
+
+resource "aws_cognito_user_pool" "fintrack_user_pool" {
+  name = "fintrack-user-pool"
+}
+
+resource "aws_cognito_user_pool_client" "fintrack_user_pool_client" {
+  name = "fintrack-user-pool-client"
+  user_pool_id = aws_cognito_user_pool.fintrack_user_pool.id
+  explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH"]
 }
 
 # ============== Converse Lambda Execution Permission ==============
