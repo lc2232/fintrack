@@ -1,26 +1,57 @@
 {
   "version": "2.0",
   "routeKey": "POST /upload",
-  "rawPath": "/upload",
+  "rawPath": "/user/upload",
   "rawQueryString": "",
   "headers": {
-    "content-type": "application/json",
-    "host": "abc123.execute-api.eu-west-2.amazonaws.com"
+    "accept": "*/*",
+    "accept-encoding": "gzip, deflate, br",
+    "authorization": "Bearer eyJraWQiOiJ2OUFpWlVvZ1pvZFwvUmFLaWJMT0JtSDZ3MmpaM0R4VjRYMW02bnNrVjN2VT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJiNjIyMTJjNC1lMDIxLTcwZDUtYWYwNy0zZWQxYjBiOTU1OGYiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuZXUtd2VzdC0yLmFtYXpvbmF3cy5jb21cL2V1LXdlc3QtMl9POTJ2b1BMUjUiLCJjbGllbnRfaWQiOiI0OG02M3NiZXRhOTlncmRtbGp1dGkzdWs1bCIsIm9yaWdpbl9qdGkiOiIyYTE3NWFjZi01YjY1LTQ1MGQtYjE2Yy01ZmYzNzEwZDcyNzgiLCJldmVudF9pZCI6IjhhYmFhZDg1LWYzYWQtNDlhYS04N2ExLTg0NjYyZTZlYzgyNCIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NzQ2OTg5ODEsImV4cCI6MTc3NDcwMjU4MSwiaWF0IjoxNzc0Njk4OTgxLCJqdGkiOiIxMjllM2NmMC0wODdhLTQwNmQtOWZkOC1lY2QzNjM5ODA2YjUiLCJ1c2VybmFtZSI6InRlc3RfdXNlciJ9.wgt0sNc14VP_2xOpPvdQBp7fCEVUsW1f2yUMz5GxJQkanKQn316B8Q6895jv_lfJhCNhZ5D1fE0nJ98Ohn0JUNpuvOubMIaWFtJnb1EyzNqam3emECf33tGRUXbcwsEHyRt95mHNik4iYrh0me-qgKSCXLTgKOp0J_AsLLPG63N5rV8hvzMw3k3Q9jWqhcizEX1gPi63PwTC8JiyahChCQoNBa-u2vuQBFbCYXNxTVGl-LkBNwjVq-D_NbIx_qsHTb7PWCb8VzTstry_vPHc7Bep0ycRdBTPEeED8YmseM8E2vAUJCM9pypegH1p9LHu8Yu57mebX_zTSc_tDqTVbw",
+    "content-length": "0",
+    "host": "xl05kade53.execute-api.eu-west-2.amazonaws.com",
+    "postman-token": "4c867a57-dd3e-4322-aca5-7eb6ebe2041b",
+    "user-agent": "PostmanRuntime/7.43.3",
+    "x-amzn-trace-id": "Root=1-69c7c28d-5bbcabd05ff40731534ac803",
+    "x-forwarded-for": "5.61.122.212",
+    "x-forwarded-port": "443",
+    "x-forwarded-proto": "https"
   },
   "requestContext": {
-    "accountId": "123456789012",
-    "apiId": "abc123",
+    "accountId": "272493677414",
+    "apiId": "xl05kade53",
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "auth_time": "1774698981",
+          "client_id": "48m63sbeta99grdmljuti3uk5l",
+          "event_id": "8abaad85-f3ad-49aa-87a1-84662e6ec824",
+          "exp": "1774702581",
+          "iat": "1774698981",
+          "iss": "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_O92voPLR5",
+          "jti": "129e3cf0-087a-406d-9fd8-ecd3639806b5",
+          "origin_jti": "2a175acf-5b65-450d-b16c-5ff3710d7278",
+          "scope": "aws.cognito.signin.user.admin",
+          "sub": "b62212c4-e021-70d5-af07-3ed1b0b9558f",
+          "token_use": "access",
+          "username": "test_user"
+        },
+        "scopes": null
+      }
+    },
+    "domainName": "xl05kade53.execute-api.eu-west-2.amazonaws.com",
+    "domainPrefix": "xl05kade53",
     "http": {
       "method": "POST",
-      "path": "/upload",
+      "path": "/user/upload",
       "protocol": "HTTP/1.1",
-      "sourceIp": "1.2.3.4",
-      "userAgent": "pytest"
+      "sourceIp": "5.61.122.212",
+      "userAgent": "PostmanRuntime/7.43.3"
     },
-    "requestId": "test-request-id",
+    "requestId": "a7tWIj94LPEEMzw=",
     "routeKey": "POST /upload",
-    "stage": "$default"
+    "stage": "user",
+    "time": "28/Mar/2026:11:59:09 +0000",
+    "timeEpoch": 1774699149274
   },
-  "body": null,
   "isBase64Encoded": false
 }

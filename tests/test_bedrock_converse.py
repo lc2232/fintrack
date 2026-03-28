@@ -49,12 +49,24 @@ def mocked_aws(aws_credentials):
         dynamo = boto3.resource("dynamodb", region_name="eu-west-2")
         table = dynamo.create_table(
             TableName="fintrack-jobs",
-            KeySchema=[{"AttributeName": "jobId", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "jobId", "AttributeType": "S"}],
+            KeySchema=[
+                {"AttributeName": "userId", "KeyType": "HASH"},
+                {"AttributeName": "jobId", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "userId", "AttributeType": "S"},
+                {"AttributeName": "jobId", "AttributeType": "S"},
+            ],
             BillingMode="PAY_PER_REQUEST",
         )
         # Pre-seed the job that the lambda will update (key derived from S3 object key)
-        table.put_item(Item={"jobId": "sample-fund-report.pdf", "status": "pending"})
+        table.put_item(
+            Item={
+                "userId": "user-123",
+                "jobId": "sample-fund-report.pdf",
+                "status": "pending",
+            }
+        )
 
         # --- S3 ---
         s3 = boto3.client("s3", region_name="eu-west-2")
@@ -64,7 +76,7 @@ def mocked_aws(aws_credentials):
         )
         s3.put_object(
             Bucket="fintrack-factsheets-bucket",
-            Key="sample-fund-report.pdf",
+            Key="user-123/sample-fund-report.pdf",
             Body=b"dummy pdf content",
         )
 
@@ -120,9 +132,9 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
     assert "TEST1234" in body["extracted_text"]
 
     # --- DynamoDB status set to 'processing' ---
-    item = mocked_aws["dynamo_table"].get_item(Key={"jobId": "sample-fund-report.pdf"})[
-        "Item"
-    ]
+    item = mocked_aws["dynamo_table"].get_item(
+        Key={"userId": "user-123", "jobId": "sample-fund-report.pdf"}
+    )["Item"]
     assert item["status"] == "processing", (
         f"Expected DynamoDB status 'processing', got '{item.get('status')}'"
     )
@@ -130,7 +142,7 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
 
 @patch("lambda_function.bedrock_model_converse")
 def test_sqs_message_schema_strict(mock_converse, mocked_aws):
-    """SQS message body must contain exactly 'jobId' and 'extracted_text'."""
+    """SQS message body must contain exactly 'jobId', 'userId' and 'extracted_text'."""
     import lambda_function
 
     lambda_function.QUEUE_URL = mocked_aws["queue_url"]
@@ -154,7 +166,7 @@ def test_sqs_message_schema_strict(mock_converse, mocked_aws):
         MaxNumberOfMessages=1,
     )
     body = json.loads(sqs_messages["Messages"][0]["Body"])
-    assert set(body.keys()) == {"jobId", "extracted_text"}, (
+    assert set(body.keys()) == {"jobId", "userId", "extracted_text"}, (
         f"Unexpected SQS message keys: {set(body.keys())}"
     )
 

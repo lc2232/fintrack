@@ -19,13 +19,39 @@ table = dynamodb.Table(DYNAMO_TABLE)
 s3 = boto3.client("s3")
 
 
+def extract_user_id(event):
+    # Fetch the authorised user's id from the request
+
+    authorizer = event.get("requestContext", {}).get("authorizer", {})
+    user_id = {}
+
+    if authorizer:  # If the user has been authorised
+        authorizer_types = authorizer.keys()
+
+        if "jwt" in authorizer_types:
+            user_id = authorizer.get("jwt", {}).get("claims", {}).get("sub")
+        else:
+            logger.error("JWT is the only supported authoriser")
+
+    return user_id
+
+
 @app.post("/upload")
 def upload_post():
+
+    # Fetch the authorised user's id from the request, currently only jwt is supported
+    user_id = extract_user_id(app.current_event)
+
+    if not user_id:
+        logger.error("No user_id found in authorizer claims")
+        return {"statusCode": 401, "body": json.dumps({"message": "Unauthorized user"})}
+
     job_id = str(uuid.uuid4())
 
     try:
         table.put_item(
             Item={
+                "userId": user_id,
                 "jobId": job_id,
                 "status": "pending",
             },
@@ -42,7 +68,7 @@ def upload_post():
         "put_object",
         Params={
             "Bucket": BUCKET_NAME,
-            "Key": f"factsheets/{job_id}",
+            "Key": f"factsheets/{user_id}/{job_id}",
             "ContentType": "application/pdf",
         },
         ExpiresIn=300,

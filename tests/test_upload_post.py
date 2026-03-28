@@ -213,14 +213,14 @@ class TestUploadPostSuccess:
         )
 
     def test_dynamodb_item_schema_strict(self, mocked_aws, api_event, lambda_context):
-        """DynamoDB item must contain exactly {'jobId', 'status'} — no extra attributes."""
+        """DynamoDB item must contain exactly {'userId', 'jobId', 'status'} — no extra attributes."""
         import lambda_function
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         db_item = mocked_aws["table"].get_item(Key={"jobId": payload["jobId"]})["Item"]
-        assert set(db_item.keys()) == {"jobId", "status"}, (
+        assert set(db_item.keys()) == {"userId", "jobId", "status"}, (
             f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
         )
 
@@ -235,6 +235,26 @@ class TestUploadPostSuccess:
             _, payload = _unwrap(raw)
             ids.add(payload["jobId"])
         assert len(ids) == 5, "Expected 5 unique jobIds across 5 invocations"
+
+
+# ---------------------------------------------------------------------------
+# Tests — Invalid authoriser used
+#
+# When the authorisation method is not supported, the route handler returns
+# {"statusCode": 401, "body": json.dumps({"message": "..."})}
+# ---------------------------------------------------------------------------
+
+
+class TestAuthorizerFailure:
+    def test_returns_401_on_authorizer_failure(self, api_event, lambda_context):
+
+        api_event["requestContext"]["authorizer"] = {"not_jwt": {}}
+
+        import lambda_function
+
+        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        status, _ = _unwrap(raw)
+        assert status == 401
 
 
 # ---------------------------------------------------------------------------

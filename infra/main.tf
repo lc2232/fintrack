@@ -81,11 +81,17 @@ resource "aws_sqs_queue" "factsheet_bedrock_output_queue" {
 resource "aws_dynamodb_table" "fintrack_factsheet_table" {
   name           = "fintrack_factsheet"
   billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "jobId"
+  hash_key       = "userId"
+  range_key      = "jobId"
 
   attribute {
     name = "jobId"
     type = "S"
+  }
+
+  attribute {
+    name = "userId"
+    type = "S" 
   }
 
   server_side_encryption {
@@ -308,7 +314,7 @@ data "aws_ecr_repository" "fintrack-upload-repository" {
 
 resource "aws_lambda_function" "fintrack_upload_handler_lambda_function" {
   function_name = "fintrack_upload_handler_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.0"
+  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.3"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_upload_handler_lambda_role.arn
   timeout       = 60

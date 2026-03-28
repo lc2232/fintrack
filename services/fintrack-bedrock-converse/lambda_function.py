@@ -58,10 +58,12 @@ def lambda_handler(event, context):
     object_key = event["Records"][0]["s3"]["object"]["key"]
 
     document_name = object_key.split("/")[-1]
+    user_id = object_key.split("/")[-2]
 
     try:
         table.update_item(
             Key={
+                "userId": user_id,
                 "jobId": document_name,
             },
             # Only update if the job exists and is in pending state, helps ensure idempotent updates
@@ -93,6 +95,7 @@ def lambda_handler(event, context):
         # Forward the model's message object directly to SQS
         message = {}
         message["jobId"] = document_name
+        message["userId"] = user_id
 
         model_message = response.get("output", {}).get("message", {})
         extracted_text = model_message.get("content", [{}])[0].get("text", "")
