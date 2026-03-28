@@ -38,7 +38,12 @@ def lambda_handler(event, context):
         data = json.loads(body_content["extracted_text"])
 
         # Parse fields with array defaults since they represent lists of exposures/holdings
+
+        # DynamoDB key fields
         job_id = body_content.get("jobId", "UNKNOWN")
+        user_id = body_content.get("userId", "UNKNOWN")
+
+        # Factsheet data fields
         isin = data.get("isin", "UNKNOWN")
         name = data.get("name", "UNKNOWN")
         document_date = data.get("documentDate", "UNKNOWN")
@@ -49,6 +54,7 @@ def lambda_handler(event, context):
         try:
             table.update_item(
                 Key={
+                    "userId": user_id,
                     "jobId": job_id,
                 },
                 # Only update if the job exists and is in processing state, helps ensure idempotent updates
@@ -77,8 +83,9 @@ def lambda_handler(event, context):
             )
         except Exception as err:
             print(
-                "Couldn't update job %s in table %s. Here's why: %s",
+                "Couldn't update job %s for user %s in table %s. Here's why: %s",
                 job_id,
+                user_id,
                 table.name,
                 {str(err)},
             )

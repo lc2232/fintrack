@@ -11,8 +11,13 @@ def main():
     # 1. Send POST request to BASE_URL/upload
     url = f"{BASE_URL}/upload"
     print(f"Sending POST request to {url}...")
+
+    # Replace the string below with your actual JWT
+    jwt_token = "HARDCODED_JWT_TOKEN"
+    headers = {"Authorization": f"Bearer {jwt_token}"}
+
     try:
-        response = requests.post(url)
+        response = requests.post(url, headers=headers)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"Failed to send POST request: {e}")
