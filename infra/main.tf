@@ -13,7 +13,7 @@ variable "model_id" {
   description = "Model ID from Bedrock"
   default     = "amazon.nova-lite-v1:0"
   validation {
-    condition     = contains([
+    condition = contains([
       "amazon.nova-lite-v1:0",
       "amazon.nova-micro-v1:0",
       "amazon.nova-premier-v1:0",
@@ -70,19 +70,51 @@ resource "aws_s3_object" "factsheets_folder" {
   key    = "factsheets/"
 }
 
-# ============== SQS Queue ==============
-resource "aws_sqs_queue" "factsheet_bedrock_output_queue" { 
-  name                    = "factsheet-bedrock-output"
-  kms_master_key_id       = "alias/aws/sqs"
+# ============== SQS Bedrock Output Queue ==============
+
+resource "aws_sqs_queue" "factsheet_bedrock_output_queue" {
+  name                       = "factsheet-bedrock-output"
+  kms_master_key_id          = "alias/aws/sqs"
   visibility_timeout_seconds = 60
+  # Policy for adding to this SQS queue is held in fintrack_bedrock_converse_policy
+}
+
+# ============== SQS Document Upload Queue ==============
+
+resource "aws_sqs_queue" "factsheet_document_upload_queue" { # Entry point of the processing pipeline
+  name                       = "factsheet-document-upload"
+  visibility_timeout_seconds = 60
+}
+
+resource "aws_sqs_queue_policy" "factsheet_document_upload_queue_policy" {
+  queue_url = aws_sqs_queue.factsheet_document_upload_queue.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "s3.amazonaws.com"
+        }
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.factsheet_document_upload_queue.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_s3_bucket.fintrack_factsheet_bucket.arn
+          }
+        }
+      }
+    ]
+  })
 }
 
 # ============== DynamoDB Table ==============
 resource "aws_dynamodb_table" "fintrack_factsheet_table" {
-  name           = "fintrack_factsheet"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "userId"
-  range_key      = "jobId"
+  name         = "fintrack_factsheet"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "jobId"
 
   attribute {
     name = "jobId"
@@ -91,11 +123,11 @@ resource "aws_dynamodb_table" "fintrack_factsheet_table" {
 
   attribute {
     name = "userId"
-    type = "S" 
+    type = "S"
   }
 
   server_side_encryption {
-    enabled     = true
+    enabled = true
   }
 }
 
@@ -148,6 +180,15 @@ resource "aws_iam_policy" "fintrack_bedrock_converse_policy" {
         Effect   = "Allow"
         Action   = "dynamodb:UpdateItem"
         Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:DeleteMessage",
+          "sqs:ReceiveMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Resource = aws_sqs_queue.factsheet_document_upload_queue.arn
       }
     ]
   })
@@ -182,8 +223,7 @@ resource "aws_iam_role_policy_attachment" "dynamodb_insert_basic_execution" {
 }
 
 resource "aws_iam_policy" "fintrack_dynamodb_insert_policy" {
-  name        = "fintrack_dynamodb_insert_policy"
-  description = "Policy for inserting into DynamoDB"
+  name = "fintrack_dynamodb_insert_policy"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -194,8 +234,8 @@ resource "aws_iam_policy" "fintrack_dynamodb_insert_policy" {
         Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
       },
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "sqs:DeleteMessage",
           "sqs:ReceiveMessage",
           "sqs:GetQueueAttributes"
@@ -264,7 +304,7 @@ resource "aws_iam_role_policy_attachment" "fintrack_upload_handler_policy_attach
 
 data "archive_file" "fintrack_bedrock_converse_lambda" { # Generate a zip archive with lambda code
   type        = "zip"
-  source_dir = "../services/fintrack-bedrock-converse/"
+  source_dir  = "../services/fintrack-bedrock-converse/"
   output_path = "../out/services/fintrack-bedrock-converse.zip"
 }
 
@@ -288,7 +328,7 @@ resource "aws_lambda_function" "fintrack_bedrock_converse_lambda_function" {
 
 data "archive_file" "fintrack_dynamodb_insert_lambda" { # Generate a zip archive with lambda code
   type        = "zip"
-  source_dir = "../services/fintrack-factsheet-insert-dynamoDB/"
+  source_dir  = "../services/fintrack-factsheet-insert-dynamoDB/"
   output_path = "../out/services/fintrack-factsheet-insert-dynamoDB.zip"
 }
 
@@ -363,9 +403,9 @@ resource "aws_apigatewayv2_stage" "lambda" {
 resource "aws_apigatewayv2_integration" "fintrack_upload_integration" {
   api_id = aws_apigatewayv2_api.lambda_api.id
 
-  integration_uri    = aws_lambda_function.fintrack_upload_handler_lambda_function.invoke_arn
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
+  integration_uri        = aws_lambda_function.fintrack_upload_handler_lambda_function.invoke_arn
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
   payload_format_version = "2.0"
 }
 
@@ -380,10 +420,10 @@ resource "aws_apigatewayv2_route" "fintrack_upload_route" {
 }
 
 resource "aws_apigatewayv2_authorizer" "fintrack_authoriser" {
-  api_id                            = aws_apigatewayv2_api.lambda_api.id
-  authorizer_type                   = "JWT"
-  identity_sources                  = ["$request.header.Authorization"]
-  name                              = "fintrack-user-authorizer"
+  api_id           = aws_apigatewayv2_api.lambda_api.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "fintrack-user-authorizer"
 
   jwt_configuration {
     audience = [aws_cognito_user_pool_client.fintrack_user_pool_client.id]
@@ -410,13 +450,13 @@ resource "aws_lambda_permission" "api_gw" {
 resource "aws_s3_bucket_notification" "fintrack_factsheet_bucket_notification" {
   bucket = aws_s3_bucket.fintrack_factsheet_bucket.id
 
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.fintrack_bedrock_converse_lambda_function.arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "factsheets/"
+  queue {
+    queue_arn     = aws_sqs_queue.factsheet_document_upload_queue.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "factsheets/"
   }
 
-  depends_on = [aws_lambda_permission.allow_bucket]
+  depends_on = [aws_sqs_queue_policy.factsheet_document_upload_queue_policy]
 }
 
 # ============== Cognito Resources ============== 
@@ -431,24 +471,21 @@ resource "aws_cognito_user_pool" "fintrack_user_pool" {
 }
 
 resource "aws_cognito_user_pool_client" "fintrack_user_pool_client" {
-  name = "fintrack-user-pool-client"
-  user_pool_id = aws_cognito_user_pool.fintrack_user_pool.id
+  name                = "fintrack-user-pool-client"
+  user_pool_id        = aws_cognito_user_pool.fintrack_user_pool.id
   explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH"]
 }
 
-# ============== Converse Lambda Execution Permission ==============
-resource "aws_lambda_permission" "allow_bucket" {
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.fintrack_bedrock_converse_lambda_function.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = aws_s3_bucket.fintrack_factsheet_bucket.arn
-}
-
-# ============== Insert Lambda SQS Event Source Mapping ============== 
+# ============== Lambda SQS Event Trigger Mappings ============== 
 resource "aws_lambda_event_source_mapping" "sqs_event_source_mapping" {
   event_source_arn = aws_sqs_queue.factsheet_bedrock_output_queue.arn
   function_name    = aws_lambda_function.fintrack_dynamodb_insert_lambda_function.function_name
+  enabled          = true
+}
+
+resource "aws_lambda_event_source_mapping" "sqs_upload_handler_mapping" {
+  event_source_arn = aws_sqs_queue.factsheet_document_upload_queue.arn
+  function_name    = aws_lambda_function.fintrack_bedrock_converse_lambda_function.function_name
   enabled          = true
 }
 
@@ -460,9 +497,14 @@ output "bucket_name" {
   value       = aws_s3_bucket.fintrack_factsheet_bucket.id
 }
 
-output "queue_url" {
+output "bedrock_output_queue_url" {
   description = "URL of the SQS queue"
   value       = aws_sqs_queue.factsheet_bedrock_output_queue.url
+}
+
+output "document_upload_queue_url" {
+  description = "URL of the SQS queue"
+  value       = aws_sqs_queue.factsheet_document_upload_queue.url
 }
 
 output "dynamodb_table_name" {

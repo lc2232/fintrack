@@ -20,7 +20,10 @@ s3 = boto3.client("s3")
 
 
 def extract_user_id(event):
-    # Fetch the authorised user's id from the request
+    """
+    Fetch the authorised user's id from the request's API Gateway context.
+    Returns an empty dict if the authorizer is missing or not a valid JWT.
+    """
 
     authorizer = event.get("requestContext", {}).get("authorizer", {})
     user_id = {}
@@ -38,7 +41,10 @@ def extract_user_id(event):
 
 @app.post("/upload")
 def upload_post():
-
+    """
+    Handle POST /upload requests to generate a presigned S3 URL for PDF uploads.
+    Also creates a 'pending' job record in DynamoDB for tracking.
+    """
     # Fetch the authorised user's id from the request, currently only jwt is supported
     user_id = extract_user_id(app.current_event)
 

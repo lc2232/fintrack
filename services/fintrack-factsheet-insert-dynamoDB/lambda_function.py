@@ -1,6 +1,11 @@
 import json
 import boto3
 import os
+import logging
+
+# Configure standard Python logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["DYNAMODB_TABLE"])
@@ -32,6 +37,10 @@ table = dynamodb.Table(os.environ["DYNAMODB_TABLE"])
 
 
 def lambda_handler(event, context):
+    """
+    Process the factsheet data extracted by Bedrock.
+    Updates the DynamoDB job status to 'completed' and stores the extracted fields.
+    """
     try:
         # Extract and parse the payload
         body_content = json.loads(event["Records"][0]["body"])
@@ -82,16 +91,13 @@ def lambda_handler(event, context):
                 ReturnValues="UPDATED_NEW",
             )
         except Exception as err:
-            print(
-                "Couldn't update job %s for user %s in table %s. Here's why: %s",
-                job_id,
-                user_id,
-                table.name,
-                {str(err)},
+            logger.error(
+                f"Couldn't update job {job_id} for user {user_id} in table {table.name}. "
+                f"Here's why: {str(err)}"
             )
             raise
 
-        print(f"Successfully inserted item for job: {job_id}")
+        logger.info(f"Successfully inserted item for job: {job_id}")
 
         return {
             "statusCode": 200,
@@ -99,5 +105,5 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         return {"statusCode": 500, "body": json.dumps(f"Error: {str(e)}")}

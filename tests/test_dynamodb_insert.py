@@ -4,6 +4,8 @@ import json
 import pytest
 import boto3
 from moto import mock_aws
+from botocore.exceptions import ClientError
+from unittest.mock import patch
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-factsheet-insert-dynamoDB")
@@ -244,3 +246,46 @@ class TestDynamoDBInsertErrors:
         assert isinstance(body, str) and body.startswith("Error:"), (
             f"Expected error body to start with 'Error:', got: {body!r}"
         )
+
+
+class TestDynamoDBUpdateErrors:
+    def test_update_item_conditional_check_failed_returns_500(
+        self, test_table, sqs_event
+    ):
+        """If the job is not in 'processing' status, update_item raises ConditionalCheckFailedException which bubbles up to a 500."""
+        import lambda_function
+
+        with patch.object(
+            lambda_function.table,
+            "update_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Check failed",
+                    }
+                },
+                "UpdateItem",
+            ),
+        ):
+            response = lambda_function.lambda_handler(sqs_event, None)
+            status, body = _parse_response(response)
+            assert status == 500
+            assert "ConditionalCheckFailedException" in body
+
+    def test_update_item_generic_client_error_returns_500(self, test_table, sqs_event):
+        """If DynamoDB throws a generic ClientError, it safely returns a 500."""
+        import lambda_function
+
+        with patch.object(
+            lambda_function.table,
+            "update_item",
+            side_effect=ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Error"}},
+                "UpdateItem",
+            ),
+        ):
+            response = lambda_function.lambda_handler(sqs_event, None)
+            status, body = _parse_response(response)
+            assert status == 500
+            assert "InternalServerError" in body
