@@ -1,0 +1,20 @@
+{
+    "Records": [
+        {
+            "messageId": "94bf9f14-c858-4f4e-80fa-59a136a08300",
+            "receiptHandle": "AQEBx9XoEh+G9cieuEi6Vg9hUwkz4Y+9/H5cUhC92U4GEQTQjneg5ZA5YHBSFfk3G/GAxIfmYfK5rlSHDvrtPqL+eaP2UzcPheNVoQJdVVI0M5I8T0/wX5xiv+Kr1OyMlL2FnF2BqU/Uq5jRI7uunwj98Gjnouj814RSmcdnQngOcsJfoHVECavuPiIDNJszcFSs+0ApOnoZJ053NTXq8bxoEJyhEE3c1rcR0PMHHaXAANQPG8Gh4i0JHCq2R8nKE5lNLUgcgL52fjoTUqtUT0Np7r1bvkOze/Z42FnZgBFeVjEjSeQSJIA/f6yOJFJpNg8NOOPXmQ69N9TA80OnDM5je26uCDzwSP0KRAgOjFuRV/xhdt/HVE7oAX9e2B17dRMq6RrcDet7x8dJDfjWjWTbmfC5tgnNTXPlqEGEpN8zHXU=",
+            "body": "{\"Records\": [{\"eventVersion\": \"2.1\", \"eventSource\": \"aws:s3\", \"awsRegion\": \"eu-west-2\", \"eventTime\": \"2026-03-28T15:23:15.944Z\", \"eventName\": \"ObjectCreated:Put\", \"userIdentity\": {\"principalId\": \"A169T7GWU9QJR4\"}, \"requestParameters\": {\"sourceIPAddress\": \"5.61.122.212\"}, \"responseElements\": {\"x-amz-request-id\": \"EWQ6HX5520AGQ2M9\", \"x-amz-id-2\": \"Z/XqymWnTmk5fNhTfTU9SzmkgQlRikGdtGrJJdz43fn2F4215O76KfBH0rs4s8FbDIvu9pkD5bYa1tpJH4FtzwbwQEW3ApAsmwdeWfGE1Ik=\"}, \"s3\": {\"s3SchemaVersion\": \"1.0\", \"configurationId\": \"tf-s3-queue-20260328145546231800000001\", \"bucket\": {\"name\": \"fintrack-factsheets-bucket\", \"ownerIdentity\": {\"principalId\": \"A169T7GWU9QJR4\"}, \"arn\": \"arn:aws:s3:::fintrack-factsheets-bucket\"}, \"object\": {\"key\": \"factsheets/user-123/sample-fund-report.pdf\", \"size\": 354030, \"eTag\": \"4f2cfab5f004777305584c3e267ce6a3\", \"versionId\": \"swjpc7WB396Y4vQr0ObSaI8wFozpN4Yd\", \"sequencer\": \"0069C7F263E3983D7B\"}}}]}",
+            "attributes": {
+                "ApproximateReceiveCount": "1",
+                "SentTimestamp": "1774711396809",
+                "SenderId": "AROA5LVVW55647YN4KVPZ:S3-PROD-END",
+                "ApproximateFirstReceiveTimestamp": "1774711396817"
+            },
+            "messageAttributes": {},
+            "md5OfBody": "1f7cfbb28d3ee2afbf8ec6a75f031343",
+            "eventSource": "aws:sqs",
+            "eventSourceARN": "arn:aws:sqs:eu-west-2:272493677414:factsheet-document-upload",
+            "awsRegion": "eu-west-2"
+        }
+    ]
+}

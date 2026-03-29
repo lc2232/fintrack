@@ -256,6 +256,17 @@ class TestAuthorizerFailure:
         status, _ = _unwrap(raw)
         assert status == 401
 
+    def test_returns_401_on_missing_authorizer(self, api_event, lambda_context):
+        """Missing authorizer block entirely returns 401."""
+        if "authorizer" in api_event["requestContext"]:
+            del api_event["requestContext"]["authorizer"]
+
+        import lambda_function
+
+        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        status, _ = _unwrap(raw)
+        assert status == 401
+
 
 # ---------------------------------------------------------------------------
 # Tests — DynamoDB error path
@@ -332,3 +343,28 @@ class TestUploadPostDynamoDBFailure:
         ):
             lambda_function.lambda_handler(api_event, lambda_context)
             mock_presign.assert_not_called()
+
+
+class TestUploadPostS3Failure:
+    def test_raises_clienterror_on_s3_error(
+        self, mocked_aws, api_event, lambda_context
+    ):
+        """If S3 presigned URL generation fails, it natively bubbles up into Powertools as a raised Exception."""
+        import lambda_function
+
+        with patch.object(
+            lambda_function.s3,
+            "generate_presigned_url",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Simulated s3 failure",
+                    }
+                },
+                "GeneratePresignedUrl",
+            ),
+        ):
+            with pytest.raises(ClientError) as exc_info:
+                lambda_function.lambda_handler(api_event, lambda_context)
+            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"

@@ -20,6 +20,11 @@ A personal finance tracking application deployed on AWS.
    python3 -m pytest tests/
    ```
 
+4. Run the unit tests locally with coverage:
+   ```bash
+   python3 -m pytest --cov=services tests/
+   ```
+
 * See the `events/` folder for sample AWS event payloads used by the tests and manual testing.
 
 ### Manual testing

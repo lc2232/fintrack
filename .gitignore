@@ -30,6 +30,7 @@ Thumbs.db
 
 # pytest
 .pytest_cache/
+.coverage
 
 # Terraform
 .terraform

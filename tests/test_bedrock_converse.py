@@ -3,11 +3,13 @@ import os
 import json
 import pytest
 import boto3
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from moto import mock_aws
+from botocore.exceptions import ClientError
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-bedrock-converse")
+EVENT_FILE_PATH = os.path.join(BASE_DIR, "events", "sqs_s3_new_object_event.json")
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -59,7 +61,8 @@ def mocked_aws(aws_credentials):
             ],
             BillingMode="PAY_PER_REQUEST",
         )
-        # Pre-seed the job that the lambda will update (key derived from S3 object key)
+        # Pre-seed the job that the lambda will update
+        # IMPORTANT - Ensure the userId and jobId match the Event (EVENT_FILE_NAME)
         table.put_item(
             Item={
                 "userId": "user-123",
@@ -76,7 +79,7 @@ def mocked_aws(aws_credentials):
         )
         s3.put_object(
             Bucket="fintrack-factsheets-bucket",
-            Key="user-123/sample-fund-report.pdf",
+            Key="factsheets/user-123/sample-fund-report.pdf",
             Body=b"dummy pdf content",
         )
 
@@ -111,8 +114,7 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
         }
     }
 
-    event_path = os.path.join(BASE_DIR, "events", "s3_put_event.json")
-    with open(event_path) as f:
+    with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     response = lambda_function.lambda_handler(event, None)
@@ -155,8 +157,7 @@ def test_sqs_message_schema_strict(mock_converse, mocked_aws):
         }
     }
 
-    event_path = os.path.join(BASE_DIR, "events", "s3_put_event.json")
-    with open(event_path) as f:
+    with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     lambda_function.lambda_handler(event, None)
@@ -181,8 +182,7 @@ def test_no_sqs_message_when_bedrock_returns_empty(mock_converse, mocked_aws):
         "output": {"message": {"role": "assistant", "content": [{"text": ""}]}}
     }
 
-    event_path = os.path.join(BASE_DIR, "events", "s3_put_event.json")
-    with open(event_path) as f:
+    with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     response = lambda_function.lambda_handler(event, None)
@@ -195,3 +195,82 @@ def test_no_sqs_message_when_bedrock_returns_empty(mock_converse, mocked_aws):
     assert "Messages" not in result, (
         "Expected no SQS message when Bedrock returns empty text"
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests - Error paths
+# ---------------------------------------------------------------------------
+
+
+@patch("lambda_function.bedrock_model_converse")
+def test_dynamodb_update_client_error(mock_converse, mocked_aws):
+    """If DynamoDB update fails (e.g. ConditionalCheckFailedException), it should raise."""
+    import lambda_function
+    with open(EVENT_FILE_PATH) as f:
+        event = json.load(f)
+
+    with patch.object(
+        lambda_function.table,
+        "update_item",
+        side_effect=ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Msg"}},
+            "UpdateItem",
+        ),
+    ):
+        with pytest.raises(ClientError) as exc_info:
+            lambda_function.lambda_handler(event, None)
+        assert exc_info.value.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+
+def test_bedrock_converse_client_error(mocked_aws):
+    """If Bedrock converse throws ClientError, it should raise and be logged."""
+    import lambda_function
+    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+
+    with open(EVENT_FILE_PATH) as f:
+        event = json.load(f)
+
+    # Need to patch the specific exception that bedrock throws
+    with patch.object(
+        lambda_function.bedrock,
+        "converse",
+        side_effect=lambda_function.bedrock.exceptions.ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Too many requests"}},
+            "Converse",
+        ),
+    ):
+        with pytest.raises(lambda_function.bedrock.exceptions.ClientError) as exc_info:
+            lambda_function.lambda_handler(event, None)
+        assert exc_info.value.response["Error"]["Code"] == "ThrottlingException"
+
+
+@patch("lambda_function.bedrock_model_converse")
+def test_sqs_send_message_client_error(mock_converse, mocked_aws):
+    """If SQS send_message throws ClientError, it should raise and be logged."""
+    import lambda_function
+    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+
+    mock_converse.return_value = {
+        "output": {
+            "message": {
+                "role": "assistant",
+                "content": [{"text": json.dumps({"isin": "TEST", "name": "Test"})}],
+            }
+        }
+    }
+
+    with open(EVENT_FILE_PATH) as f:
+        event = json.load(f)
+
+    with patch.object(
+        lambda_function.sqs,
+        "send_message",
+        side_effect=lambda_function.sqs.exceptions.ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "Msg"}},
+            "SendMessage",
+        ),
+    ):
+        with pytest.raises(lambda_function.sqs.exceptions.ClientError) as exc_info:
+            lambda_function.lambda_handler(event, None)
+        assert exc_info.value.response["Error"]["Code"] == "AccessDenied"
+
