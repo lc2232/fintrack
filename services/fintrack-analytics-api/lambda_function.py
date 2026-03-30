@@ -1,6 +1,7 @@
 import boto3
 import os
 import json
+from decimal import Decimal
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.event_handler import APIGatewayHttpResolver
 from aws_lambda_powertools.logging import correlation_paths
@@ -14,6 +15,13 @@ logger = Logger()
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMO_TABLE)
+    
+    
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 
 def extract_user_id(event):
@@ -42,7 +50,7 @@ class Factsheet:
         industry_exposure: dict,
         market_exposure: dict,
         top_holdings: dict,
-        weighting: float,
+        weighting: Decimal,
         fund_name: str,
     ):
         self.industry_exposure = industry_exposure
@@ -78,19 +86,19 @@ class Analytics:
                     industry_exposure=row["industryExposure"],
                     market_exposure=row["marketExposure"],
                     top_holdings=row["topHoldings"],
-                    weighting=float(row["weighting"]),
+                    weighting=Decimal(str(row["weighting"])),
                     fund_name=row["name"],
                 )
             )
 
-    def _sanitize_percentage(self, percentage: str) -> float:
+    def _sanitize_percentage(self, percentage: str) -> Decimal:
         """
         Remove the % symbol from the percentage value.
         """
         if percentage:
-            return float(percentage.replace("%", ""))
+            return Decimal(percentage.replace("%", ""))
         else:
-            return 0.0
+            return Decimal("0.0")
 
     def summary(self):
         """
@@ -223,7 +231,7 @@ def analytics_summary_get():
 
     return {
         "statusCode": 200,
-        "body": json.dumps(summary),
+        "body": json.dumps(summary, cls=DecimalEncoder),
     }
 
 
