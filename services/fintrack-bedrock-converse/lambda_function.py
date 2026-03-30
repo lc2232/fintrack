@@ -31,6 +31,7 @@ STRICT RULES:
 - Do NOT infer missing values.
 - All fields MUST be present.
 - Use null if missing.
+- Do not include the % symbol in the percentage values.
 
 {
     isin: "",

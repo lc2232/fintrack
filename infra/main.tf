@@ -251,7 +251,7 @@ resource "aws_iam_role_policy_attachment" "fintrack_dynamodb_insert_policy_attac
   policy_arn = aws_iam_policy.fintrack_dynamodb_insert_policy.arn
 }
 
-# ============== IAM Role for Upload Handler Lambda ==============
+# ============== IAM Role for Upload API Lambda ==============
 resource "aws_iam_role" "fintrack_upload_handler_lambda_role" {
   name = "fintrack_upload_handler_lambda_role"
 
@@ -288,8 +288,23 @@ resource "aws_iam_policy" "fintrack_upload_handler_policy" {
       },
       {
         Effect   = "Allow"
+        Action   = "dynamodb:UpdateItem"
+        Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "dynamodb:Query"
+        Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "dynamodb:GetItem"
+        Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
+      },
+      {
+        Effect   = "Allow"
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.fintrack_factsheet_bucket.arn}/*"
+        Resource = "${aws_s3_bucket.fintrack_factsheet_bucket.arn}/factsheets/*"
       }
     ]
   })
@@ -298,6 +313,50 @@ resource "aws_iam_policy" "fintrack_upload_handler_policy" {
 resource "aws_iam_role_policy_attachment" "fintrack_upload_handler_policy_attachment" {
   role       = aws_iam_role.fintrack_upload_handler_lambda_role.name
   policy_arn = aws_iam_policy.fintrack_upload_handler_policy.arn
+}
+
+# ============== IAM Role for Analytics API Lambda ==============
+resource "aws_iam_role" "fintrack_analytics_api_lambda_role" {
+  name = "fintrack_analytics_api_lambda_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "analytics_api_basic_execution" {
+  role       = aws_iam_role.fintrack_analytics_api_lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "fintrack_analytics_api_policy" {
+  name        = "fintrack_analytics_api_policy"
+  description = "Policy for querying DynamoDB"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "dynamodb:Query"
+        Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "fintrack_analytics_api_policy_attachment" {
+  role       = aws_iam_role.fintrack_analytics_api_lambda_role.name
+  policy_arn = aws_iam_policy.fintrack_analytics_api_policy.arn
 }
 
 # ============== Lambda Functions ==============
@@ -354,16 +413,35 @@ data "aws_ecr_repository" "fintrack-upload-repository" {
 
 resource "aws_lambda_function" "fintrack_upload_handler_lambda_function" {
   function_name = "fintrack_upload_handler_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.3"
+  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.79"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_upload_handler_lambda_role.arn
+  timeout       = 60
+  architectures = ["arm64"] # Container built on Mac M series CPU hence arm64 architecture
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = aws_dynamodb_table.fintrack_factsheet_table.name
+      BUCKET_NAME    = aws_s3_bucket.fintrack_factsheet_bucket.id
+    }
+  }
+}
+
+data "aws_ecr_repository" "fintrack-analytics-repository" {
+  name = "fintrack/analytics"
+}
+
+resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
+  function_name = "fintrack_analytics_lambda_tf"
+  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.22"
+  package_type  = "Image"
+  role          = aws_iam_role.fintrack_analytics_api_lambda_role.arn
   timeout       = 60
   architectures = ["arm64"]
 
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.fintrack_factsheet_table.name
-      BUCKET_NAME    = aws_s3_bucket.fintrack_factsheet_bucket.id
     }
   }
 }
@@ -378,7 +456,7 @@ resource "aws_apigatewayv2_api" "lambda_api" {
 resource "aws_apigatewayv2_stage" "lambda" {
   api_id = aws_apigatewayv2_api.lambda_api.id
 
-  name        = "user"
+  name        = "$default"
   auto_deploy = true
 
   access_log_settings {
@@ -400,6 +478,25 @@ resource "aws_apigatewayv2_stage" "lambda" {
   }
 }
 
+resource "aws_apigatewayv2_integration" "fintrack_analytics_integration" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  integration_uri        = aws_lambda_function.fintrack_analytics_lambda_function.invoke_arn
+  integration_type       = "AWS_PROXY" # Although this is a GET request, AWS API Gateway v2 only supports POST for AWS_PROXY integrations
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "fintrack_analytics_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "GET /analytics/summary"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_analytics_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
 resource "aws_apigatewayv2_integration" "fintrack_upload_integration" {
   api_id = aws_apigatewayv2_api.lambda_api.id
 
@@ -413,6 +510,36 @@ resource "aws_apigatewayv2_route" "fintrack_upload_route" {
   api_id = aws_apigatewayv2_api.lambda_api.id
 
   route_key = "POST /upload"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_upload_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_route" "fintrack_upload_get_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "GET /upload"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_upload_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_route" "fintrack_upload_get_job_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "GET /upload/{jobId}"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_upload_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_route" "fintrack_upload_patch_job_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "PATCH /upload/{jobId}"
   target    = "integrations/${aws_apigatewayv2_integration.fintrack_upload_integration.id}"
 
   authorization_type = "JWT"
@@ -437,10 +564,19 @@ resource "aws_cloudwatch_log_group" "api_gw_log_group" {
   retention_in_days = 30
 }
 
-resource "aws_lambda_permission" "api_gw" {
+resource "aws_lambda_permission" "api_gw_upload" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.fintrack_upload_handler_lambda_function.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_apigatewayv2_api.lambda_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "api_gw_analytics" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.fintrack_analytics_lambda_function.function_name
   principal     = "apigateway.amazonaws.com"
 
   source_arn = "${aws_apigatewayv2_api.lambda_api.execution_arn}/*/*"
