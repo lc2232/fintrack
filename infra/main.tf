@@ -413,7 +413,7 @@ data "aws_ecr_repository" "fintrack-upload-repository" {
 
 resource "aws_lambda_function" "fintrack_upload_handler_lambda_function" {
   function_name = "fintrack_upload_handler_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.79"
+  image_uri     = "${data.aws_ecr_repository.fintrack-upload-repository.repository_url}:v1.82"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_upload_handler_lambda_role.arn
   timeout       = 60
@@ -433,7 +433,7 @@ data "aws_ecr_repository" "fintrack-analytics-repository" {
 
 resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
   function_name = "fintrack_analytics_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.22"
+  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.24"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_analytics_api_lambda_role.arn
   timeout       = 60

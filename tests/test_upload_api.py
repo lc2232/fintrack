@@ -8,7 +8,8 @@ from moto import mock_aws
 from botocore.exceptions import ClientError
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-upload-api")
+SERVICES_DIR = os.path.join(BASE_DIR, "services")
+LAMBDA_DIR = os.path.join(SERVICES_DIR, "fintrack-upload-api")
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -18,14 +19,16 @@ LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-upload-api")
 @pytest.fixture(autouse=True)
 def setup_path():
     """Add the lambda directory to sys.path and ensure a clean module import."""
+    sys.path.insert(0, SERVICES_DIR)
     sys.path.insert(0, LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function",):
+        if mod in ("lambda_function", "utils", "utils.auth"):
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
+    sys.path.remove(SERVICES_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function",):
+        if mod in ("lambda_function", "utils", "utils.auth"):
             del sys.modules[mod]
 
 
@@ -103,29 +106,34 @@ def lambda_context():
 
 def _unwrap(raw: dict) -> tuple[int, dict]:
     """
-    Unwrap the double-envelope produced by APIGatewayHttpResolver.
+    Unwrap the response produced by APIGatewayHttpResolver.
 
-    Layer 1 (resolver envelope):  {"statusCode": 200, "body": "<handler dict as JSON>", ...}
-    Layer 2 (handler return):     {"statusCode": <int>, "body": "<payload as JSON>"}
-    Layer 3 (payload):            {"jobId": ..., "uploadUrl": ...}  (or error shape)
+    Handles both:
+    1. Double-envelope (manual handler return):
+       {"statusCode": 200, "body": "{\"statusCode\": 200, \"body\": \"...\"}"}
+    2. Single-envelope (global exception handler or Response object):
+       {"statusCode": 500, "body": "{\"message\": \"...\"}"}
 
-    Returns (inner_status_code: int, payload: dict).
+    Returns (status_code: int, payload: dict).
     """
     assert isinstance(raw, dict), "Top-level response must be a dict"
     assert "body" in raw, "Top-level response must contain 'body'"
 
-    # Unwrap layer 1 → layer 2
-    handler_return = json.loads(raw["body"])
-    assert isinstance(handler_return, dict), "Layer-2 body must be a JSON object"
-    assert "statusCode" in handler_return, "Layer-2 body must contain 'statusCode'"
-    assert "body" in handler_return, "Layer-2 body must contain 'body'"
-    assert isinstance(handler_return["statusCode"], int), "'statusCode' must be an int"
+    body_content = json.loads(raw["body"])
 
-    # Unwrap layer 2 → payload
-    payload = json.loads(handler_return["body"])
-    assert isinstance(payload, (dict, list)), "Payload must be a JSON object or list"
-
-    return handler_return["statusCode"], payload
+    # Check if it's a double envelope
+    if (
+        isinstance(body_content, dict)
+        and "statusCode" in body_content
+        and "body" in body_content
+    ):
+        # Layer 2 is the handler return
+        inner_status = body_content["statusCode"]
+        payload = json.loads(body_content["body"])
+        return inner_status, payload
+    else:
+        # Single envelope (e.g. from global exception handler)
+        return raw["statusCode"], body_content
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +220,11 @@ class TestUploadPostSuccess:
 
         job_id = payload["jobId"]
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-        db_item = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": job_id}).get("Item")
+        db_item = (
+            mocked_aws["table"]
+            .get_item(Key={"userId": user_id, "jobId": job_id})
+            .get("Item")
+        )
         assert db_item is not None, f"No DynamoDB item found for jobId '{job_id}'"
         assert db_item["jobId"] == job_id
         assert db_item["status"] == "pending", (
@@ -234,7 +246,7 @@ class TestUploadPostSuccess:
                 "jobId": payload["jobId"],
             }
         )["Item"]
-        assert set(db_item.keys()) == {"userId", "jobId", "status"}, (
+        assert set(db_item.keys()) == {"userId", "jobId", "status", "weighting"}, (
             f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
         )
 
@@ -331,7 +343,7 @@ class TestUploadPostDynamoDBFailure:
 
         raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
         _, payload = _unwrap(raw)
-        assert payload["message"] == "Failed to create job"
+        assert payload["message"] == "Database error"
 
     def test_no_presigned_url_generated_on_dynamodb_error(
         self, mocked_aws, api_event, lambda_context
@@ -353,17 +365,17 @@ class TestUploadPostDynamoDBFailure:
                     "PutItem",
                 ),
             ),
-            patch.object(lambda_function.s3_client, "generate_presigned_url") as mock_presign,
+            patch.object(
+                lambda_function.s3_client, "generate_presigned_url"
+            ) as mock_presign,
         ):
             lambda_function.lambda_handler(api_event, lambda_context)
             mock_presign.assert_not_called()
 
 
 class TestUploadPostS3Failure:
-    def test_raises_clienterror_on_s3_error(
-        self, mocked_aws, api_event, lambda_context
-    ):
-        """If S3 presigned URL generation fails, it natively bubbles up into Powertools as a raised Exception."""
+    def test_returns_500_on_s3_error(self, mocked_aws, api_event, lambda_context):
+        """If S3 presigned URL generation fails, it is caught by the global exception handler."""
         import lambda_function
 
         with patch.object(
@@ -379,19 +391,27 @@ class TestUploadPostS3Failure:
                 "GeneratePresignedUrl",
             ),
         ):
-            with pytest.raises(ClientError) as exc_info:
-                lambda_function.lambda_handler(api_event, lambda_context)
-            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            status, payload = _unwrap(raw)
+            assert status == 500
+            assert payload["message"] == "Storage error"
 
 
 class TestUploadGet:
     def test_returns_200_with_list(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         # Seed DynamoDB
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "job1", "status": "completed"})
-        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "job2", "status": "pending"})
-        mocked_aws["table"].put_item(Item={"userId": "other-user", "jobId": "job3", "status": "pending"})
+        mocked_aws["table"].put_item(
+            Item={"userId": user_id, "jobId": "job1", "status": "completed"}
+        )
+        mocked_aws["table"].put_item(
+            Item={"userId": user_id, "jobId": "job2", "status": "pending"}
+        )
+        mocked_aws["table"].put_item(
+            Item={"userId": "other-user", "jobId": "job3", "status": "pending"}
+        )
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload"
@@ -408,6 +428,7 @@ class TestUploadGet:
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload"
         api_event["rawPath"] = "/upload"
@@ -417,7 +438,12 @@ class TestUploadGet:
             lambda_function.table,
             "query",
             side_effect=ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Simulated failure"}},
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Simulated failure",
+                    }
+                },
                 "Query",
             ),
         ):
@@ -429,8 +455,11 @@ class TestUploadGet:
 class TestUploadGetJobId:
     def test_returns_200_for_specific_job(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "test-job", "status": "completed"})
+        mocked_aws["table"].put_item(
+            Item={"userId": user_id, "jobId": "test-job", "status": "completed"}
+        )
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/test-job"
@@ -447,6 +476,7 @@ class TestUploadGetJobId:
 
     def test_returns_404_if_not_found(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/non-existent"
         api_event["rawPath"] = "/upload/non-existent"
@@ -461,6 +491,7 @@ class TestUploadGetJobId:
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/test-job"
         api_event["rawPath"] = "/upload/test-job"
@@ -471,7 +502,12 @@ class TestUploadGetJobId:
             lambda_function.table,
             "query",
             side_effect=ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Simulated failure"}},
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Simulated failure",
+                    }
+                },
                 "Query",
             ),
         ):
@@ -483,21 +519,28 @@ class TestUploadGetJobId:
 class TestUploadPatchWeights:
     def test_returns_200_on_success(self, mocked_aws, api_event, lambda_context):
         import lambda_function
+
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "job1", "status": "completed"})
-        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "job2", "status": "completed"})
+        mocked_aws["table"].put_item(
+            Item={"userId": user_id, "jobId": "job1", "status": "completed"}
+        )
+        mocked_aws["table"].put_item(
+            Item={"userId": user_id, "jobId": "job2", "status": "completed"}
+        )
 
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
         api_event["rawPath"] = "/upload/weights"
         api_event["routeKey"] = "PATCH /upload/weights"
         # Weights is a list of objects with jobId and weight
-        api_event["body"] = json.dumps({
-            "weights": [
-                {"jobId": "job1", "weight": 0.4},
-                {"jobId": "job2", "weight": 0.6}
-            ]
-        })
+        api_event["body"] = json.dumps(
+            {
+                "weights": [
+                    {"jobId": "job1", "weight": 0.4},
+                    {"jobId": "job2", "weight": 0.6},
+                ]
+            }
+        )
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
@@ -506,24 +549,33 @@ class TestUploadPatchWeights:
         assert payload["message"] == "Weighting updated"
 
         # Verify DB
-        item1 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job1"})["Item"]
-        item2 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job2"})["Item"]
+        item1 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job1"})[
+            "Item"
+        ]
+        item2 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job2"})[
+            "Item"
+        ]
         # Decimal to float comparison
         assert float(item1["weighting"]) == 0.4
         assert float(item2["weighting"]) == 0.6
 
-    def test_returns_400_if_weights_dont_sum_to_1(self, mocked_aws, api_event, lambda_context):
+    def test_returns_400_if_weights_dont_sum_to_1(
+        self, mocked_aws, api_event, lambda_context
+    ):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
         api_event["rawPath"] = "/upload/weights"
         api_event["routeKey"] = "PATCH /upload/weights"
-        api_event["body"] = json.dumps({
-            "weights": [
-                {"jobId": "job1", "weight": 0.4},
-                {"jobId": "job2", "weight": 0.4}
-            ]
-        })
+        api_event["body"] = json.dumps(
+            {
+                "weights": [
+                    {"jobId": "job1", "weight": 0.4},
+                    {"jobId": "job2", "weight": 0.4},
+                ]
+            }
+        )
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
@@ -531,24 +583,34 @@ class TestUploadPatchWeights:
         assert status == 400
         assert payload["message"] == "Weightings must sum to 1"
 
-    def test_returns_500_on_dynamodb_transaction_error(self, mocked_aws, api_event, lambda_context):
+    def test_returns_500_on_dynamodb_transaction_error(
+        self, mocked_aws, api_event, lambda_context
+    ):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
         api_event["rawPath"] = "/upload/weights"
         api_event["routeKey"] = "PATCH /upload/weights"
-        api_event["body"] = json.dumps({
-            "weights": [
-                {"jobId": "job1", "weight": 0.5},
-                {"jobId": "job2", "weight": 0.5}
-            ]
-        })
+        api_event["body"] = json.dumps(
+            {
+                "weights": [
+                    {"jobId": "job1", "weight": 0.5},
+                    {"jobId": "job2", "weight": 0.5},
+                ]
+            }
+        )
 
         with patch.object(
             lambda_function.dynamo_client,
             "transact_write_items",
             side_effect=ClientError(
-                {"Error": {"Code": "TransactionCanceledException", "Message": "Simulated failure"}},
+                {
+                    "Error": {
+                        "Code": "TransactionCanceledException",
+                        "Message": "Simulated failure",
+                    }
+                },
                 "TransactWriteItems",
             ),
         ):
@@ -560,6 +622,7 @@ class TestUploadPatchWeights:
 class TestNewRoutesUnauthorized:
     def test_upload_get_unauthorized(self, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload"
         api_event["rawPath"] = "/upload"
@@ -572,6 +635,7 @@ class TestNewRoutesUnauthorized:
 
     def test_upload_get_job_id_unauthorized(self, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/test-job"
         api_event["rawPath"] = "/upload/test-job"
@@ -585,6 +649,7 @@ class TestNewRoutesUnauthorized:
 
     def test_upload_patch_weights_unauthorized(self, api_event, lambda_context):
         import lambda_function
+
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
         api_event["rawPath"] = "/upload/weights"

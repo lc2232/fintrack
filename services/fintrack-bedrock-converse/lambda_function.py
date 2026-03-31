@@ -29,7 +29,7 @@ STRICT RULES:
 - Return ONLY valid JSON.
 - Do NOT include markdown or explanations.
 - Do NOT infer missing values.
-- All fields MUST be present.
+- All fields MUST be present. Including list syntax.
 - Use null if missing.
 - Do not include the % symbol in the percentage values.
 

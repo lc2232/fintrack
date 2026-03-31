@@ -3,10 +3,16 @@ import os
 import json
 from decimal import Decimal
 from aws_lambda_powertools import Logger
-from aws_lambda_powertools.event_handler import APIGatewayHttpResolver
+from aws_lambda_powertools.event_handler import (
+    APIGatewayHttpResolver,
+    Response,
+    content_types,
+)
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
+
+from utils.auth import require_user
 
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE"]
 
@@ -15,8 +21,8 @@ logger = Logger()
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMO_TABLE)
-    
-    
+
+
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
@@ -24,24 +30,20 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 
-def extract_user_id(event):
-    """
-    Fetch the authorised user's id from the request's API Gateway context.
-    Returns an empty dict if the authorizer is missing or not a valid JWT.
-    """
+# Centralised error handling to reduce duplication and provide more accurate messaging
+@app.exception_handler(ClientError)
+def handle_aws_error(ex: ClientError):
+    operation = getattr(ex, "operation_name", "Unknown")
 
-    authorizer = event.get("requestContext", {}).get("authorizer", {})
-    user_id = {}
+    logger.exception(
+        "Internal service error", extra={"Exception": str(ex), "Operation": operation}
+    )
 
-    if authorizer:  # If the user has been authorised
-        authorizer_types = authorizer.keys()
-
-        if "jwt" in authorizer_types:
-            user_id = authorizer.get("jwt", {}).get("claims", {}).get("sub")
-        else:
-            logger.error("JWT is the only supported authoriser")
-
-    return user_id
+    return Response(
+        status_code=500,
+        content_type=content_types.APPLICATION_JSON,
+        body=json.dumps({"message": "Internal service error"}),
+    )
 
 
 class Factsheet:
@@ -130,7 +132,7 @@ class Analytics:
                     industry_exposure_dict["percentage"]
                 )
 
-                if not industry or not exposure:
+                if not industry or exposure == Decimal("0.0"):
                     continue
 
                 logger.info(f"Industry: {industry}, Exposure: {exposure}")
@@ -153,7 +155,7 @@ class Analytics:
                 market = market_exposure_dict["country"]
                 exposure = self._sanitize_percentage(market_exposure_dict["percentage"])
 
-                if not market or not exposure:
+                if not market or exposure == Decimal("0.0"):
                     continue
 
                 logger.info(f"Market: {market}, Exposure: {exposure}")
@@ -170,7 +172,7 @@ class Analytics:
                     holding_exposure_dict["percentage"]
                 )
 
-                if not holding or not exposure:
+                if not holding or exposure == Decimal("0.0"):
                     continue
 
                 logger.info(f"Holding: {holding}, Exposure: {exposure}")
@@ -189,7 +191,8 @@ class Analytics:
 
 
 @app.get("/analytics/summary")
-def analytics_summary_get():
+@require_user
+def analytics_summary_get(user_id):
     """
     Handle GET /analytics/summary requests to retrieve aggregated financial information for the authenticated user.
     """
@@ -197,42 +200,20 @@ def analytics_summary_get():
     # This is not the most performant solution, but it is the simplest to implement and sufficient for the MVP.
     # Future improvements could be caching analytics in redis, or storing aggregated results on document upload then providing those to the user
 
-    # Step 1: Query the DynamoDB for all processed documents belonging to the authenticated user
-    # See what the format of the retrieved rows is
-
-    # Fetch the authorised user's id from the request, currently only jwt is supported
-    user_id = extract_user_id(app.current_event)
-
-    if not user_id:
-        logger.error("No user_id found in authorizer claims")
-        return {"statusCode": 401, "body": json.dumps({"message": "Unauthorized user"})}
-
-    try:
-        # Query DynamoDB for all completed jobs belonging to the authenticated user
-        response = table.query(
-            KeyConditionExpression=boto3.dynamodb.conditions.Key("userId").eq(user_id),
-            FilterExpression=boto3.dynamodb.conditions.Attr("status").eq("completed"),
-        )
-    except ClientError:
-        logger.exception("Failed to query jobs")
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"message": "Failed to query jobs"}),
-        }
+    # Step 1: Query the DynamoDB for all completed jobs belonging to the authenticated user
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key("userId").eq(user_id),
+        FilterExpression=boto3.dynamodb.conditions.Attr("status").eq("completed"),
+    )
 
     # Step 2: Pass the data to the analytics class
-
     analytics = Analytics(response["Items"])
     summary = analytics.summary()
 
     # Step 3: Return the aggregated data
-
     logger.info(f"Summary Response : {summary}")
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps(summary, cls=DecimalEncoder),
-    }
+    return json.dumps(summary, cls=DecimalEncoder)
 
 
 @logger.inject_lambda_context(correlation_id_path=correlation_paths.API_GATEWAY_HTTP)

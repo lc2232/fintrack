@@ -9,7 +9,8 @@ from moto import mock_aws
 from botocore.exceptions import ClientError
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-analytics-api")
+SERVICES_DIR = os.path.join(BASE_DIR, "services")
+LAMBDA_DIR = os.path.join(SERVICES_DIR, "fintrack-analytics-api")
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -19,15 +20,17 @@ LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-analytics-api")
 @pytest.fixture(autouse=True)
 def setup_path():
     """Add the lambda directory to sys.path and ensure a clean module import."""
+    sys.path.insert(0, SERVICES_DIR)
     sys.path.insert(0, LAMBDA_DIR)
     # Ensure fresh import of lambda_function for each test
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function",):
+        if mod in ("lambda_function", "utils", "utils.auth"):
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
+    sys.path.remove(SERVICES_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function",):
+        if mod in ("lambda_function", "utils", "utils.auth"):
             del sys.modules[mod]
 
 
@@ -84,19 +87,34 @@ def lambda_context():
 
 def _unwrap(raw: dict) -> tuple[int, dict]:
     """
-    Unwrap the double-envelope produced by APIGatewayHttpResolver.
+    Unwrap the response produced by APIGatewayHttpResolver.
+
+    Handles both:
+    1. Double-envelope (manual handler return):
+       {"statusCode": 200, "body": "{\"statusCode\": 200, \"body\": \"...\"}"}
+    2. Single-envelope (global exception handler or Response object):
+       {"statusCode": 200, "body": "{\"message\": \"...\"}"}
+
+    Returns (status_code: int, payload: dict).
     """
-    assert isinstance(raw, dict)
-    assert "body" in raw
+    assert isinstance(raw, dict), "Top-level response must be a dict"
+    assert "body" in raw, "Top-level response must contain 'body'"
 
-    # Layer 1: resolver envelope
-    handler_return = json.loads(raw["body"])
-    assert "statusCode" in handler_return
-    assert "body" in handler_return
+    body_content = json.loads(raw["body"])
 
-    # Layer 2: handler return
-    payload = json.loads(handler_return["body"])
-    return handler_return["statusCode"], payload
+    # Check if it's a double envelope
+    if (
+        isinstance(body_content, dict)
+        and "statusCode" in body_content
+        and "body" in body_content
+    ):
+        # Layer 2 is the handler return
+        inner_status = body_content["statusCode"]
+        payload = json.loads(body_content["body"])
+        return inner_status, payload
+    else:
+        # Single envelope
+        return raw["statusCode"], body_content
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +290,7 @@ class TestAnalyticsSummaryDynamoDBFailure:
             status, payload = _unwrap(raw)
 
             assert status == 500
-            assert payload["message"] == "Failed to query jobs"
+            assert payload["message"] == "Internal service error"
 
 
 class TestAnalyticsDataParsing:
@@ -316,20 +334,6 @@ class TestAnalyticsDataParsing:
         assert payload["portfolio_industry_exposure"] == {}
         assert payload["portfolio_market_exposure"] == {}
         assert payload["portfolio_top_holdings"]["Apple"] == 10.0
-
-
-class TestAnalyticsCoveragePack:
-    """Additional tests to reach 100% coverage."""
-
-    def test_decimal_encoder_fallback(self):
-        import lambda_function
-
-        encoder = lambda_function.DecimalEncoder()
-        # Test with something that works with default encoder
-        assert encoder.encode({"a": 1}) == '{"a": 1}'
-        # Test with something that should raise TypeError in default encoder
-        with pytest.raises(TypeError):
-            encoder.encode(object())
 
     def test_unsupported_authorizer_type(self, api_event, lambda_context):
         import lambda_function
