@@ -61,22 +61,56 @@ To destroy the resources:
 terraform destroy
 ```
 
-## Docker
 
-To deploy a docker image you must first login to the AWS ECR registry:
+## Frontend
+
+A single-page frontend at **[`frontend/index.html`](file:frontend/index.html)** — zero dependencies, pure HTML/CSS/JS. Open it directly in a browser or serve it via any static file server.
+
+## Config (hardcoded at top of `<script>`)
+
+| Key | Value |
+|-----|-------|
+| API Base | `https://xl05kade53.execute-api.eu-west-2.amazonaws.com` |
+| Cognito Region | `eu-west-2` |
+| Client ID | `48m63sbeta99grdmljuti3uk5l` |
+
+## Features
+
+### 🔐 Auth (Login / Sign Out)
+- Username + password form, calls Cognito `USER_PASSWORD_AUTH` via REST
+- `IdToken` stored in-memory only (never `localStorage`)
+- Sign out clears the token and returns to the login screen
+
+### 📋 Jobs
+- Lists all upload jobs in a table (Job ID, Fund Name, Status, Weighting)
+- Status shown as coloured badges: `pending` (amber), `completed` (green), `failed` (red)
+- Refresh button re-fetches from `GET /upload`
+
+### ⬆️ Upload
+- Drag-and-drop or click-to-select PDF file picker
+- Validates: PDF only, max 10 MB
+- Flow: `POST /upload` → get presigned URL and `jobId` → `PUT` file directly to S3 (no auth header on S3 call)
+
+### ⚖️ Weights
+- Shows only **completed** jobs with numeric inputs
+- Live sum indicator turns green when sum is in [0.98, 1.02]
+- Calls `PATCH /upload/weights` with `{ weights: [...] }`
+
+### 📊 Analytics
+- Calls `GET /analytics/summary`
+- Renders three sections as horizontal bar charts: Industry Exposure, Market Exposure, Top Holdings
+
+## What Was Fixed
+- The initial HTML had `style="display:none; display:flex"` on `#app-shell` — the second declaration was overriding the first, causing the dashboard to bleed through the login screen. Fixed to `display:none` only; JS sets `display:flex` on successful login.
+
+## How to Serve Locally
 
 ```bash
-aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin <aws_account_id>.dkr.ecr.eu-west-2.amazonaws.com
+cd frontend
+python3 -m http.server 8080
+# → open http://localhost:8080
 ```
 
-You can then build and tag them to your ECR registry via:
+> [!NOTE]
+> Opening `file://` directly works for the login flow but S3 presigned URL PUT requests may be blocked by CORS in some browsers. Using a local server (`localhost`) avoids this.
 
-```bash
-docker build -t <aws_account_id>.dkr.ecr.eu-west-2.amazonaws.com/fintrack/upload:v0.4 .
-```
-
-And push them to ECR via:
-
-```bash
-docker push <aws_account_id>.dkr.ecr.eu-west-2.amazonaws.com/fintrack/upload:v0.4
-```

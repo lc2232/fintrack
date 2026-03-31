@@ -70,6 +70,18 @@ resource "aws_s3_object" "factsheets_folder" {
   key    = "factsheets/"
 }
 
+resource "aws_s3_bucket_cors_configuration" "factsheets_cors" {
+  bucket = aws_s3_bucket.fintrack_factsheet_bucket.id
+
+  cors_rule {
+    allowed_headers = ["content-type"]
+    allowed_methods = ["PUT"]
+    allowed_origins = ["http://localhost:8080"] # Used for local testing before website hosting
+    expose_headers  = ["ETag"]
+    max_age_seconds = 300
+  }
+}
+
 # ============== SQS Bedrock Output Queue ==============
 
 resource "aws_sqs_queue" "factsheet_bedrock_output_queue" {
@@ -451,6 +463,12 @@ resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
 resource "aws_apigatewayv2_api" "lambda_api" {
   name          = "fintrack_api"
   protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["http://localhost:8080"] # Used for local testing before website hosting
+    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_headers = ["content-type", "authorization"]
+  }
 }
 
 resource "aws_apigatewayv2_stage" "lambda" {
