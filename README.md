@@ -29,7 +29,7 @@ A personal finance tracking application deployed on AWS.
 
 ### Manual testing
 
-A small python script has been written in the `utils/` folder that can be used to test the end-to-end flow of the application. It will:
+A small python script has been written in the `scripts/` folder that can be used to test the end-to-end flow of the application. It will:
 
 1. Send a POST request to the `fintrack-upload-post` Lambda function to get a presigned S3 URL.
 2. Upload a PDF file from the `artifacts/` folder to the presigned S3 URL.

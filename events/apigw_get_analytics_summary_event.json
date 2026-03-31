@@ -1,0 +1,19 @@
+{
+    "version": "2.0",
+    "routeKey": "GET /analytics/summary",
+    "rawPath": "/analytics/summary",
+    "requestContext": {
+        "stage": "$default",
+        "authorizer": {
+            "jwt": {
+                "claims": {
+                    "sub": "test-user-123"
+                }
+            }
+        },
+        "http": {
+            "method": "GET",
+            "path": "/analytics/summary"
+        }
+    }
+}

@@ -1,7 +1,7 @@
 {
   "version": "2.0",
   "routeKey": "POST /upload",
-  "rawPath": "/user/upload",
+  "rawPath": "/upload",
   "rawQueryString": "",
   "headers": {
     "accept": "*/*",
@@ -42,14 +42,14 @@
     "domainPrefix": "xl05kade53",
     "http": {
       "method": "POST",
-      "path": "/user/upload",
+      "path": "/upload",
       "protocol": "HTTP/1.1",
       "sourceIp": "5.61.122.212",
       "userAgent": "PostmanRuntime/7.43.3"
     },
     "requestId": "a7tWIj94LPEEMzw=",
     "routeKey": "POST /upload",
-    "stage": "user",
+    "stage": "$default",
     "time": "28/Mar/2026:11:59:09 +0000",
     "timeEpoch": 1774699149274
   },
