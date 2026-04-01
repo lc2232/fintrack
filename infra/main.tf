@@ -466,7 +466,7 @@ resource "aws_apigatewayv2_api" "lambda_api" {
 
   cors_configuration {
     allow_origins = ["http://localhost:8080"] # Used for local testing before website hosting
-    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PATCH", "OPTIONS"]
     allow_headers = ["content-type", "authorization"]
   }
 }
