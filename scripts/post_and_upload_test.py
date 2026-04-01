@@ -4,7 +4,7 @@ import requests
 import glob
 
 # Current API Gateway Base URL for the Fintrack project
-BASE_URL = "https://xl05kade53.execute-api.eu-west-2.amazonaws.com/"
+BASE_URL = ""
 HARDCODED_JWT_TOKEN = ""
 
 

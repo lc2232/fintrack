@@ -1,0 +1,81 @@
+# Rendered on https://www.planttext.com
+
+@startuml
+scale 2
+skinparam linetype ortho
+left to right direction
+
+!include <awslib/AWSCommon>
+!include <awslib/Groups/AWSCloud>
+!include <awslib/Groups/Generic>
+!include <awslib/General/Users>
+
+!include <awslib/SecurityIdentityCompliance/Cognito>
+!include <awslib/ApplicationIntegration/APIGateway>
+!include <awslib/ApplicationIntegration/SimpleQueueService>
+
+!include <awslib/Compute/Lambda>
+!include <awslib/Storage/SimpleStorageService>
+!include <awslib/Database/DynamoDB>
+!include <awslib/General/Servers>
+
+Users(user, "User", "Client")
+
+APIGateway(api, "API Gateway", "fintrack_api")
+
+AWSCloudGroup(aws) {
+
+    Cognito(cognito, "Cognito User Pool", "JWT Auth")
+
+    GenericGroup(apiLayer, "API Lambdas") {
+        Lambda(uploadLambda, "Upload Handler", "")
+        Lambda(analyticsLambda, "Analytics API", "")
+    }
+
+    SimpleStorageService(s3, "Factsheet Bucket", "S3")
+
+    DynamoDB(dynamo, "fintrack_factsheet", "Table")
+
+    GenericGroup(asyncPipeline, "Async Processing") {
+
+        SimpleQueueService(uploadQueue, "Document Upload Queue", "")
+
+        Lambda(bedrockLambda, "Bedrock Converse", "")
+
+        Servers(bedrock, "Amazon Bedrock", "Nova Model")
+
+        SimpleQueueService(bedrockQueue, "Bedrock Output Queue", "")
+
+        Lambda(insertLambda, "DynamoDB Insert", "")
+    }
+
+}
+
+user --> api
+api --> cognito : JWT
+
+api --> uploadLambda : POST /upload
+
+api --> uploadLambda : GET /upload
+api --> uploadLambda : PATCH /upload/{jobId}
+
+api --> analyticsLambda : GET /analytics/summary
+
+uploadLambda --> s3 : Upload Factsheet
+uploadLambda --> dynamo : PutItem / UpdateItem
+
+s3 --> uploadQueue : ObjectCreated Event
+
+uploadQueue --> bedrockLambda
+
+bedrockLambda --> s3 : Read Factsheet
+bedrockLambda --> bedrock : InvokeModel
+bedrockLambda --> bedrockQueue : Send Result
+bedrockLambda --> dynamo : Update Status
+
+bedrockQueue --> insertLambda
+insertLambda --> dynamo : UpdateItem
+
+analyticsLambda --> dynamo : Query
+
+@enduml
