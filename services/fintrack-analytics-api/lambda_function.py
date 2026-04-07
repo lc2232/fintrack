@@ -13,6 +13,7 @@ from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
 
 from utils.auth import require_user
+from utils.schemas import JobRecord
 
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE"]
 
@@ -46,25 +47,6 @@ def handle_aws_error(ex: ClientError):
     )
 
 
-class Factsheet:
-    def __init__(
-        self,
-        industry_exposure: dict,
-        market_exposure: dict,
-        top_holdings: dict,
-        weighting: Decimal,
-        fund_name: str,
-    ):
-        self.industry_exposure = industry_exposure
-        self.market_exposure = market_exposure
-        self.top_holdings = top_holdings
-        self.weighting = weighting
-        self.fund_name = fund_name
-
-    def __str__(self):
-        return f"Fund Name: {self.fund_name}, Weighting: {self.weighting}, Industry Exposure: {self.industry_exposure}, Market Exposure: {self.market_exposure}, Top Holdings: {self.top_holdings}"
-
-
 class Analytics:
     """
     This class gets passed a series of rows from the output of the fintrack DynamoDB table.
@@ -80,18 +62,15 @@ class Analytics:
     def _extract_data(self):
         """
         Parse the input data and cache in class attributes for later use.
-        Each factsheet is stored as a Factsheet object in the self.factsheets list.
+        Each factsheet is stored as a JobRecord object in the self.factsheets list.
         """
-        for row in self.data:
-            self.factsheets.append(
-                Factsheet(
-                    industry_exposure=row["industryExposure"],
-                    market_exposure=row["marketExposure"],
-                    top_holdings=row["topHoldings"],
-                    weighting=Decimal(str(row["weighting"])),
-                    fund_name=row["name"],
-                )
-            )
+        for row in self.data:  # Parse row into a known contract schema (JobRecord)
+            try:
+                record = JobRecord(**row)
+                self.factsheets.append(record)
+                raise
+            except Exception as e:
+                logger.error(f"Skipping malformed record {row.get('jobId')}: {e}")
 
     def _sanitize_percentage(self, percentage: str) -> Decimal:
         """
@@ -125,63 +104,66 @@ class Analytics:
         portfolio_top_holdings = {}
 
         for factsheet in self.factsheets:
-            logger.info(f"Factsheet: {factsheet}")
-            for industry_exposure_dict in factsheet.industry_exposure:
-                industry = industry_exposure_dict["industry"]
-                exposure = self._sanitize_percentage(
-                    industry_exposure_dict["percentage"]
-                )
+            logger.info(f"Factsheet: {factsheet.name}")
+            if factsheet.industryExposure:
+                for item in factsheet.industryExposure:
+                    name = item.name
+                    exposure = item.percentage
 
-                if not industry or exposure == Decimal("0.0"):
-                    continue
+                    if not name or exposure == Decimal("0.0"):
+                        continue
 
-                logger.info(f"Industry: {industry}, Exposure: {exposure}")
-                if industry in portfolio_industry_exposure:
-                    logger.info(
-                        f"Industry {industry} already in portfolio_industry_exposure"
-                    )
-                    portfolio_industry_exposure[industry] += (
-                        exposure * factsheet.weighting
-                    )
-                else:
-                    logger.info(
-                        f"Industry {industry} not in portfolio_industry_exposure"
-                    )
-                    portfolio_industry_exposure[industry] = (
-                        exposure * factsheet.weighting
-                    )
+                    logger.info(f"Industry: {name}, Exposure: {exposure}")
+                    if name in portfolio_industry_exposure:
+                        logger.info(
+                            f"Industry {name} already in portfolio_industry_exposure"
+                        )
+                        portfolio_industry_exposure[name] += (
+                            exposure * factsheet.weighting
+                        )
+                    else:
+                        logger.info(
+                            f"Industry {name} not in portfolio_industry_exposure"
+                        )
+                        portfolio_industry_exposure[name] = (
+                            exposure * factsheet.weighting
+                        )
 
-            for market_exposure_dict in factsheet.market_exposure:
-                market = market_exposure_dict["country"]
-                exposure = self._sanitize_percentage(market_exposure_dict["percentage"])
+            if factsheet.marketExposure:
+                for item in factsheet.marketExposure:
+                    name = item.name
+                    exposure = item.percentage
 
-                if not market or exposure == Decimal("0.0"):
-                    continue
+                    if not name or exposure == Decimal("0.0"):
+                        continue
 
-                logger.info(f"Market: {market}, Exposure: {exposure}")
-                if market in portfolio_market_exposure:
-                    logger.info(f"Market {market} already in portfolio_market_exposure")
-                    portfolio_market_exposure[market] += exposure * factsheet.weighting
-                else:
-                    logger.info(f"Market {market} not in portfolio_market_exposure")
-                    portfolio_market_exposure[market] = exposure * factsheet.weighting
+                    logger.info(f"Market: {name}, Exposure: {exposure}")
+                    if name in portfolio_market_exposure:
+                        logger.info(
+                            f"Market {name} already in portfolio_market_exposure"
+                        )
+                        portfolio_market_exposure[name] += (
+                            exposure * factsheet.weighting
+                        )
+                    else:
+                        logger.info(f"Market {name} not in portfolio_market_exposure")
+                        portfolio_market_exposure[name] = exposure * factsheet.weighting
 
-            for holding_exposure_dict in factsheet.top_holdings:
-                holding = holding_exposure_dict["company"]
-                exposure = self._sanitize_percentage(
-                    holding_exposure_dict["percentage"]
-                )
+            if factsheet.topHoldings:
+                for item in factsheet.topHoldings:
+                    name = item.name
+                    exposure = item.percentage
 
-                if not holding or exposure == Decimal("0.0"):
-                    continue
+                    if not name or exposure == Decimal("0.0"):
+                        continue
 
-                logger.info(f"Holding: {holding}, Exposure: {exposure}")
-                if holding in portfolio_top_holdings:
-                    logger.info(f"Holding {holding} already in portfolio_top_holdings")
-                    portfolio_top_holdings[holding] += exposure * factsheet.weighting
-                else:
-                    logger.info(f"Holding {holding} not in portfolio_top_holdings")
-                    portfolio_top_holdings[holding] = exposure * factsheet.weighting
+                    logger.info(f"Holding: {name}, Exposure: {exposure}")
+                    if name in portfolio_top_holdings:
+                        logger.info(f"Holding {name} already in portfolio_top_holdings")
+                        portfolio_top_holdings[name] += exposure * factsheet.weighting
+                    else:
+                        logger.info(f"Holding {name} not in portfolio_top_holdings")
+                        portfolio_top_holdings[name] = exposure * factsheet.weighting
 
         return {
             "portfolio_industry_exposure": portfolio_industry_exposure,

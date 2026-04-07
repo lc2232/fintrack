@@ -2,6 +2,7 @@ import json
 import boto3
 import os
 import logging
+from decimal import Decimal
 
 # Configure standard Python logging
 logger = logging.getLogger()
@@ -9,31 +10,6 @@ logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["DYNAMODB_TABLE"])
-
-# Expected JSON event
-# {
-#     isin: "",
-#     name: "",
-#     documentDate: "",
-#     marketExposure: {
-#         [
-#             "country": "",
-#             "percentage": ""
-#         ], ... up to 10 entries
-#     },
-#     topHoldings: {
-#         [
-#             "company": "",
-#             "percentage": ""
-#         ], ... up to 10 entries
-#     },
-#     industryExposure: {
-#         [
-#             "industry": "",
-#             "percentage": ""
-#         ], ... up to 10 entries
-#     }
-# }
 
 
 def lambda_handler(event, context):
@@ -44,7 +20,7 @@ def lambda_handler(event, context):
     try:
         # Extract and parse the payload
         body_content = json.loads(event["Records"][0]["body"])
-        data = json.loads(body_content["extracted_text"])
+        data = json.loads(body_content["extracted_text"], parse_float=Decimal)
 
         # Parse fields with array defaults since they represent lists of exposures/holdings
 

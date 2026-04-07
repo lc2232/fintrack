@@ -1,0 +1,109 @@
+{
+    "type": "object",
+    "required": [
+        "isin",
+        "name",
+        "documentDate",
+        "marketExposure",
+        "topHoldings",
+        "industryExposure"
+    ],
+    "properties": {
+        "isin": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "name": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "documentDate": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "marketExposure": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "percentage": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "percentage"
+                ]
+            }
+        },
+        "topHoldings": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "percentage": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "percentage"
+                ]
+            }
+        },
+        "industryExposure": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "percentage": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "percentage"
+                ]
+            }
+        }
+    }
+}

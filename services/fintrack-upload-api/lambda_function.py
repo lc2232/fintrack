@@ -14,6 +14,7 @@ from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
 
 from utils.auth import require_user
+from utils.schemas import JobStatus, JobRecord
 
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE"]
 BUCKET_NAME = os.environ["BUCKET_NAME"]
@@ -84,13 +85,15 @@ def upload_post(user_id):
 
     job_id = str(uuid.uuid4())
 
+    job_record = JobRecord(
+        userId=user_id,
+        jobId=job_id,
+        status=JobStatus.PENDING,
+        weighting=Decimal("0.0"),
+    )
+
     table.put_item(
-        Item={
-            "userId": user_id,
-            "jobId": job_id,
-            "status": "pending",
-            "weighting": Decimal("0.0"),
-        },
+        Item=job_record.model_dump(exclude_none=True),
         ConditionExpression="attribute_not_exists(jobId)",
     )
 

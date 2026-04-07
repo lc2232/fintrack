@@ -373,20 +373,17 @@ resource "aws_iam_role_policy_attachment" "fintrack_analytics_api_policy_attachm
 
 # ============== Lambda Functions ==============
 
-data "archive_file" "fintrack_bedrock_converse_lambda" { # Generate a zip archive with lambda code
-  type        = "zip"
-  source_dir  = "../services/fintrack-bedrock-converse/"
-  output_path = "../out/services/fintrack-bedrock-converse.zip"
+data "aws_ecr_repository" "fintrack-converse-repository" {
+  name = "fintrack/converse"
 }
 
 resource "aws_lambda_function" "fintrack_bedrock_converse_lambda_function" {
-  function_name    = "fintrack_bedrock_converse_lambda_tf"
-  filename         = "../out/services/fintrack-bedrock-converse.zip"
-  source_code_hash = data.archive_file.fintrack_bedrock_converse_lambda.output_base64sha256
-  handler          = "lambda_function.lambda_handler"
-  runtime          = "python3.14"
-  role             = aws_iam_role.fintrack_bedrock_converse_lambda_role.arn
-  timeout          = 60
+  function_name = "fintrack_bedrock_converse_lambda_tf"
+  image_uri     = "${data.aws_ecr_repository.fintrack-converse-repository.repository_url}:v1.02"
+  package_type  = "Image"
+  role          = aws_iam_role.fintrack_bedrock_converse_lambda_role.arn
+  timeout       = 60
+  architectures = ["arm64"] # Container built on Mac M series CPU hence arm64 architecture
 
   environment {
     variables = {

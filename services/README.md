@@ -29,6 +29,11 @@ docker build -t fintrack-upload-api -f fintrack-upload-api/Dockerfile .
 docker build -t fintrack-analytics-api -f fintrack-analytics-api/Dockerfile .
 ```
 
+#### Fintrack Bedrock Converse
+```bash
+docker build -t fintrack-converse -f fintrack-bedrock-converse/Dockerfile .
+```
+
 ### Why we build from the `services/` root
 Docker build contexts cannot include files from parent directories. By setting the context to `services/`, we ensure that the `utils/` directory is available to the `COPY` commands inside each individual `Dockerfile`.
 
