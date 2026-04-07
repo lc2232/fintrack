@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 from botocore.exceptions import ClientError
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SERVICES_DIR = os.path.join(BASE_DIR, "services")
 LAMBDA_DIR = os.path.join(SERVICES_DIR, "fintrack-upload-api")
 

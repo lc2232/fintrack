@@ -50,10 +50,15 @@ Run the suite with coverage tracking:
 python3 -m pytest --cov=services tests/
 ```
 
-### Manual end-to-end testing
+### End-to-end testing
 
 A Python script exists in `scripts/` that tests the end-to-end upload flow. It requests a presigned S3 URL, uploads an artifact, and triggers the processing pipeline. 
 
+```bash
+export FINTRACK_JWT_TOKEN="<your testing token>"
+
+pytest tests/integration/test_e2e_live.py --run-live
+```
 ## ☁️ Deployment
 
 Terraform is used to manage all AWS infrastructure (API Gateway, Lambda, DynamoDB, S3, Cognito). 

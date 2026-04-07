@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 from moto import mock_aws
 from botocore.exceptions import ClientError
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SERVICES_DIR = os.path.join(BASE_DIR, "services")
 LAMBDA_DIR = os.path.join(SERVICES_DIR, "fintrack-analytics-api")
 
@@ -69,9 +69,11 @@ def mocked_aws(aws_credentials):
 @pytest.fixture
 def api_event():
     """Default API Gateway HTTP v2 event for GET /analytics/summary."""
+    print(f"BASSE DIR {BASE_DIR}")
     event_path = os.path.join(
         BASE_DIR, "events", "apigw_get_analytics_summary_event.json"
     )
+    print(event_path)
     with open(event_path) as f:
         return json.load(f)
 
@@ -135,9 +137,9 @@ class TestAnalyticsSummarySuccess:
                 "status": "completed",
                 "name": "Fund A",
                 "weighting": Decimal("1.0"),
-                "industryExposure": [{"industry": "Tech", "percentage": "100%"}],
-                "marketExposure": [{"country": "USA", "percentage": "100%"}],
-                "topHoldings": [{"company": "Apple", "percentage": "10%"}],
+                "industryExposure": [{"name": "Tech", "percentage": "100"}],
+                "marketExposure": [{"name": "USA", "percentage": "100"}],
+                "topHoldings": [{"name": "Apple", "percentage": "10"}],
             }
         )
 
@@ -156,7 +158,7 @@ class TestAnalyticsSummarySuccess:
 
         user_id = "test-user-123"
 
-        # Fund A: 60% weight, Tech 100%
+        # Fund A: 60 weight, Tech 100
         mocked_aws["table"].put_item(
             Item={
                 "userId": user_id,
@@ -164,12 +166,12 @@ class TestAnalyticsSummarySuccess:
                 "status": "completed",
                 "name": "Fund A",
                 "weighting": Decimal("0.6"),
-                "industryExposure": [{"industry": "Tech", "percentage": "100%"}],
-                "marketExposure": [{"country": "USA", "percentage": "100%"}],
-                "topHoldings": [{"company": "Apple", "percentage": "10%"}],
+                "industryExposure": [{"name": "Tech", "percentage": "100"}],
+                "marketExposure": [{"name": "USA", "percentage": "100"}],
+                "topHoldings": [{"name": "Apple", "percentage": "10"}],
             }
         )
-        # Fund B: 40% weight, Tech 50%, Energy 50%
+        # Fund B: 40 weight, Tech 50, Energy 50
         mocked_aws["table"].put_item(
             Item={
                 "userId": user_id,
@@ -178,11 +180,11 @@ class TestAnalyticsSummarySuccess:
                 "name": "Fund B",
                 "weighting": Decimal("0.4"),
                 "industryExposure": [
-                    {"industry": "Tech", "percentage": "50%"},
-                    {"industry": "Energy", "percentage": "50%"},
+                    {"name": "Tech", "percentage": "50"},
+                    {"name": "Energy", "percentage": "50"},
                 ],
-                "marketExposure": [{"country": "UK", "percentage": "100%"}],
-                "topHoldings": [{"company": "BP", "percentage": "20%"}],
+                "marketExposure": [{"name": "UK", "percentage": "100"}],
+                "topHoldings": [{"name": "BP", "percentage": "20"}],
             }
         )
 
@@ -216,9 +218,9 @@ class TestAnalyticsSummarySuccess:
                 "status": "completed",
                 "name": "Fund A",
                 "weighting": Decimal("1.0"),
-                "industryExposure": [{"industry": "Tech", "percentage": "100%"}],
-                "marketExposure": [{"country": "USA", "percentage": "100%"}],
-                "topHoldings": [{"company": "Apple", "percentage": "10%"}],
+                "industryExposure": [{"name": "Tech", "percentage": "100"}],
+                "marketExposure": [{"name": "USA", "percentage": "100"}],
+                "topHoldings": [{"name": "Apple", "percentage": "10"}],
             }
         )
         # Pending job (should be ignored)
@@ -229,9 +231,9 @@ class TestAnalyticsSummarySuccess:
                 "status": "pending",
                 "name": "Fund B",
                 "weighting": Decimal("1.0"),
-                "industryExposure": [{"industry": "Energy", "percentage": "100%"}],
-                "marketExposure": [{"country": "UK", "percentage": "100%"}],
-                "topHoldings": [{"company": "BP", "percentage": "20%"}],
+                "industryExposure": [{"name": "Energy", "percentage": "100"}],
+                "marketExposure": [{"name": "UK", "percentage": "100"}],
+                "topHoldings": [{"name": "BP", "percentage": "20"}],
             }
         )
 
@@ -300,8 +302,8 @@ class TestAnalyticsDataParsing:
         import lambda_function
 
         analytics = lambda_function.Analytics([])
-        assert analytics._sanitize_percentage("10.5%") == 10.5
-        assert analytics._sanitize_percentage("0%") == 0.0
+        assert analytics._sanitize_percentage("10.5") == 10.5
+        assert analytics._sanitize_percentage("0") == 0.0
         assert analytics._sanitize_percentage(None) == 0.0
         assert analytics._sanitize_percentage("") == 0.0
 
@@ -318,11 +320,9 @@ class TestAnalyticsDataParsing:
                 "status": "completed",
                 "name": "Fund A",
                 "weighting": Decimal("1.0"),
-                "industryExposure": [
-                    {"industry": "", "percentage": ""}
-                ],  # empty strings
+                "industryExposure": [],  # empty strings
                 "marketExposure": [],  # empty list
-                "topHoldings": [{"company": "Apple", "percentage": "10%"}],
+                "topHoldings": [{"name": "Apple", "percentage": "10"}],
             }
         )
 
@@ -357,9 +357,9 @@ class TestAnalyticsDataParsing:
             "userId": user_id,
             "status": "completed",
             "weighting": Decimal("0.5"),
-            "industryExposure": [{"industry": "Tech", "percentage": "100%"}],
-            "marketExposure": [{"country": "USA", "percentage": "100%"}],
-            "topHoldings": [{"company": "Apple", "percentage": "10%"}],
+            "industryExposure": [{"name": "Tech", "percentage": "100"}],
+            "marketExposure": [{"name": "USA", "percentage": "100"}],
+            "topHoldings": [{"name": "Apple", "percentage": "10"}],
         }
 
         mocked_aws["table"].put_item(
@@ -391,11 +391,9 @@ class TestAnalyticsDataParsing:
                 "status": "completed",
                 "name": "Fund A",
                 "weighting": Decimal("1.0"),
-                "industryExposure": [{"industry": "Tech", "percentage": "100%"}],
-                "marketExposure": [
-                    {"country": "", "percentage": "50%"}
-                ],  # Empty country
-                "topHoldings": [{"company": "", "percentage": "5%"}],  # Empty company
+                "industryExposure": [{"name": "Tech", "percentage": "100"}],
+                "marketExposure": [{"name": "", "percentage": "50"}],  # Empty country
+                "topHoldings": [{"name": "", "percentage": "5"}],  # Empty company
             }
         )
 

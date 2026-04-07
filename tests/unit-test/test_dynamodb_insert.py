@@ -7,7 +7,7 @@ from moto import mock_aws
 from botocore.exceptions import ClientError
 from unittest.mock import patch
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-factsheet-insert-dynamoDB")
 
 # The jobId used in sqs_message_event.json
