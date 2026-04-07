@@ -183,6 +183,27 @@ def validate_factsheet(response_text) -> tuple[bool, str | None]:
     return True, None
 
 
+def sanitise_model_output(model_out):
+    """
+    LLM's typically output json in Markdown, hence we must strip anything either side
+    of the outermost '{' and '}'
+    """
+    start = model_out.find("{")
+
+    if start == -1:
+        logger.error("No JSON object found")
+    else:
+        model_out = model_out[start:]
+
+        end = model_out.rfind("}")
+        if end == -1:
+            raise ValueError("Incomplete JSON")
+
+        model_out = model_out[: end + 1]
+
+    return model_out
+
+
 def perform_factsheet_extraction(doc_bytes):
     """
     Resilient extraction loop. Handles schema and logic errors with up to 3 retries.
@@ -212,17 +233,20 @@ def perform_factsheet_extraction(doc_bytes):
         messages.append(model_message)
 
         response_text = model_message.get("content", [{}])[0].get("text", "")
-        valid, error_msg = validate_factsheet(response_text)
+        sanitised_response_text = sanitise_model_output(response_text)
+        valid, error_msg = validate_factsheet(sanitised_response_text)
 
         if valid:
             logger.info(f"Extraction successful on attempt {attempt + 1}")
-            return response_text
+            return sanitised_response_text
 
         if attempt < 3:
             logger.info(f"Retrying extraction (attempt {attempt + 2}/4)...")
             messages.append({"role": "user", "content": [{"text": error_msg}]})
 
     logger.error("Failed to extract valid factsheet data after 4 attempts.")
+
+    logger.error(f"Please see the following message exchange: {messages}")
     return None
 
 

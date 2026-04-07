@@ -379,7 +379,7 @@ data "aws_ecr_repository" "fintrack-converse-repository" {
 
 resource "aws_lambda_function" "fintrack_bedrock_converse_lambda_function" {
   function_name = "fintrack_bedrock_converse_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-converse-repository.repository_url}:v0.06"
+  image_uri     = "${data.aws_ecr_repository.fintrack-converse-repository.repository_url}:v1.02"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_bedrock_converse_lambda_role.arn
   timeout       = 60
