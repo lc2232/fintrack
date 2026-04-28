@@ -1,8 +1,9 @@
 import json
-import boto3
-import os
 import logging
+import os
 from decimal import Decimal
+
+import boto3
 
 # Configure standard Python logging
 logger = logging.getLogger()

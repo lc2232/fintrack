@@ -1,0 +1,155 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Format Python",
+      "type": "shell",
+      "command": "black",
+      "args": ["."],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Format Python - Current File",
+      "type": "shell",
+      "command": "black",
+      "args": ["${file}"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint Python (Ruff)",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", "${file}"],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+): (.*?)$",
+            "file": 1,
+            "location": 2,
+            "column": 3,
+            "message": 4
+          }
+        }
+      ]
+    },
+    {
+      "label": "Lint Python (Ruff) - Fix",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", "${file}", "--fix"],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint All (Ruff)",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", "."],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+): (.*?)$",
+            "file": 1,
+            "location": 2,
+            "column": 3,
+            "message": 4
+          }
+        }
+      ]
+    },
+    {
+      "label": "Lint All (Ruff) - Fix",
+      "type": "shell",
+      "command": "ruff",
+      "args": ["check", ".", "--fix"],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Type Check",
+      "type": "shell",
+      "command": "mypy",
+      "args": ["services/"],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(.*):(\\d+): (error|warning): (.*?)$",
+            "file": 1,
+            "location": 2,
+            "severity": 3,
+            "message": 4
+          }
+        }
+      ]
+    },
+    {
+      "label": "Pre-commit Check",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/pre-commit",
+      "args": ["run", "--all-files"],
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

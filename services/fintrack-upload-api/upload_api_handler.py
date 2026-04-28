@@ -1,8 +1,10 @@
-import boto3
+import json
 import os
 import uuid
-import json
 from decimal import Decimal
+from typing import Any
+
+import boto3
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.event_handler import (
     APIGatewayHttpResolver,
@@ -12,9 +14,8 @@ from aws_lambda_powertools.event_handler import (
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
-
 from utils.auth import require_user
-from utils.schemas import JobStatus, JobRecord
+from utils.schemas import JobRecord, JobStatus
 
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE"]
 BUCKET_NAME = os.environ["BUCKET_NAME"]
@@ -76,7 +77,7 @@ def handle_aws_error(ex: ClientError):
 
 
 @app.post("/upload")
-@require_user
+@require_user(app)
 def upload_post(user_id):
     """
     Handle POST /upload requests to generate a presigned S3 URL for PDF uploads.
@@ -113,7 +114,7 @@ def upload_post(user_id):
 
 
 @app.get("/upload")
-@require_user
+@require_user(app)
 def upload_get(user_id):
     """
     Handle GET /upload requests to retrieve a list of uploaded files for the authenticated user.
@@ -127,7 +128,7 @@ def upload_get(user_id):
 
 
 @app.get("/upload/<jobId>")
-@require_user
+@require_user(app)
 def upload_get_job_id(user_id, jobId: str):
     """
     Handle GET /upload/{jobId} requests to retrieve a specific job for the authenticated user.
@@ -145,8 +146,8 @@ def upload_get_job_id(user_id, jobId: str):
 
 
 @app.patch("/upload/weights")
-@require_user
-def upload_patch_weights(user_id):
+@require_user(app)
+def upload_patch_weights(user_id) -> Any:
     """
     Handle PATCH /upload/weights requests to update the weightings for all jobs belonging to the authenticated user.
     """

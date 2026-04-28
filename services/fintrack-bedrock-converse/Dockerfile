@@ -12,4 +12,4 @@ COPY utils /var/task/utils
 
 # Set the CMD to your handler (could also be done as a parameter override outside of the Dockerfile)
 ENTRYPOINT ["/lambda-entrypoint.sh"]
-CMD [ "lambda_function.lambda_handler" ]
+CMD [ "bedrock_converse.lambda_handler" ]

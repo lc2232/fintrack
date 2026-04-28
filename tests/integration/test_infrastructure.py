@@ -18,9 +18,7 @@ def test_s3_bucket_exists_and_versioned(terraform_outputs):
 
     # Check versioning
     versioning = s3.get_bucket_versioning(Bucket=bucket)
-    assert versioning.get("Status") == "Enabled", (
-        "S3 Bucket versioning should be Enabled"
-    )
+    assert versioning.get("Status") == "Enabled", "S3 Bucket versioning should be Enabled"
 
 
 def test_s3_bucket_notification_configured(terraform_outputs):
@@ -31,24 +29,21 @@ def test_s3_bucket_notification_configured(terraform_outputs):
 
     # Check if there is an SQS configuration
     sqs_configs = notification.get("QueueConfigurations", [])
-    assert len(sqs_configs) >= 1, (
-        "There should be at least one SQS notification configured for the bucket"
-    )
+    assert (
+        len(sqs_configs) >= 1
+    ), "There should be at least one SQS notification configured for the bucket"
 
     # Verify it points to factsheets/
     config = sqs_configs[0]
     rules = config.get("Filter", {}).get("Key", {}).get("FilterRules", [])
     has_factsheets_prefix = any(
-        rule.get("Name") == "Prefix" and rule.get("Value") == "factsheets/"
-        for rule in rules
+        rule.get("Name") == "Prefix" and rule.get("Value") == "factsheets/" for rule in rules
     )
 
-    assert has_factsheets_prefix, (
-        "Bucket notification should filter by 'factsheets/' prefix"
-    )
-    assert "s3:ObjectCreated:*" in config.get("Events", []), (
-        "Should trigger on ObjectCreated events"
-    )
+    assert has_factsheets_prefix, "Bucket notification should filter by 'factsheets/' prefix"
+    assert "s3:ObjectCreated:*" in config.get(
+        "Events", []
+    ), "Should trigger on ObjectCreated events"
 
 
 def test_sqs_queue_policy_allows_s3(terraform_outputs):
@@ -59,9 +54,9 @@ def test_sqs_queue_policy_allows_s3(terraform_outputs):
     policy_str = attributes.get("Attributes", {}).get("Policy")
 
     assert policy_str is not None, "SQS queue should have a policy to allow S3 access"
-    assert "s3.amazonaws.com" in policy_str, (
-        "SQS queue policy should reference the S3 service principal"
-    )
+    assert (
+        "s3.amazonaws.com" in policy_str
+    ), "SQS queue policy should reference the S3 service principal"
 
 
 def test_iam_role_upload_handler(terraform_outputs):
@@ -69,9 +64,7 @@ def test_iam_role_upload_handler(terraform_outputs):
     table_name = terraform_outputs["dynamodb_table_name"]
 
     # Check if the policy contains dynamodb:PutItem for our table
-    policies = iam.list_attached_role_policies(
-        RoleName="fintrack_upload_handler_lambda_role"
-    )
+    policies = iam.list_attached_role_policies(RoleName="fintrack_upload_handler_lambda_role")
 
     upload_policy = None
     for policy in policies.get("AttachedPolicies", []):
@@ -103,6 +96,4 @@ def test_iam_role_upload_handler(terraform_outputs):
             if "dynamodb:PutItem" in actions and table_name in resource:
                 has_put_item = True
 
-    assert has_put_item, (
-        "Upload API role does not have PutItem permission for the DynamoDB table"
-    )
+    assert has_put_item, "Upload API role does not have PutItem permission for the DynamoDB table"

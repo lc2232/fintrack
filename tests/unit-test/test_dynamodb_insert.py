@@ -1,11 +1,12 @@
-import sys
-import os
 import json
-import pytest
-import boto3
-from moto import mock_aws
-from botocore.exceptions import ClientError
+import os
+import sys
 from unittest.mock import patch
+
+import boto3
+import pytest
+from botocore.exceptions import ClientError
+from moto import mock_aws
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-factsheet-insert-dynamoDB")
@@ -23,12 +24,12 @@ def setup_path():
     """Add the lambda directory to sys.path and ensure a clean module import."""
     sys.path.insert(0, LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod == "lambda_function":
+        if mod == "insert_factsheet":
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod == "lambda_function":
+        if mod == "insert_factsheet":
             del sys.modules[mod]
 
 
@@ -92,30 +93,30 @@ def _parse_response(raw: dict) -> tuple[int, object]:
 
 class TestDynamoDBInsertSuccess:
     def test_returns_200(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        response = lambda_function.lambda_handler(sqs_event, None)
+        response = insert_factsheet.lambda_handler(sqs_event, None)
         status, _ = _parse_response(response)
         assert status == 200
 
     def test_response_body_contains_job_id(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        response = lambda_function.lambda_handler(sqs_event, None)
+        response = insert_factsheet.lambda_handler(sqs_event, None)
         _, body = _parse_response(response)
         assert isinstance(body, str), "Response body should be a string message"
-        assert FIXTURE_JOB_ID in body, (
-            f"Expected jobId '{FIXTURE_JOB_ID}' in response body, got: {body!r}"
-        )
+        assert (
+            FIXTURE_JOB_ID in body
+        ), f"Expected jobId '{FIXTURE_JOB_ID}' in response body, got: {body!r}"
 
     def test_item_status_set_to_completed(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
-        assert item["status"] == "completed", (
-            f"Expected status 'completed', got '{item.get('status')}'"
-        )
+        assert (
+            item["status"] == "completed"
+        ), f"Expected status 'completed', got '{item.get('status')}'"
 
     def test_item_schema_strict(self, test_table, sqs_event):
         """Updated DynamoDB item must contain exactly the expected keys."""
@@ -129,86 +130,89 @@ class TestDynamoDBInsertSuccess:
             "topHoldings",
             "industryExposure",
         }
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
-        assert set(item.keys()) == expected_keys, (
-            f"Unexpected DynamoDB item keys.\n  Got:      {set(item.keys())}\n  Expected: {expected_keys}"
-        )
+        assert (
+            set(item.keys()) == expected_keys
+        ), f"Unexpected DynamoDB item keys.\n  Got:      {set(item.keys())}\n  Expected: {expected_keys}"
 
     def test_name_field(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         assert item["name"] == "Vanguard S&P 500 UCITS ETF"
 
     def test_document_date_field(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         assert item["documentDate"] == "28 February 2026"
 
     def test_market_exposure_schema(self, test_table, sqs_event):
         """Each marketExposure entry must have exactly 'country' and 'percentage'."""
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         exposures = item["marketExposure"]
         assert isinstance(exposures, list) and len(exposures) > 0
         for entry in exposures:
-            assert set(entry.keys()) == {"country", "percentage"}, (
-                f"Unexpected marketExposure entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "country",
+                "percentage",
+            }, f"Unexpected marketExposure entry keys: {set(entry.keys())}"
 
     def test_market_exposure_values(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         assert item["marketExposure"][0]["country"] == "United States"
         assert item["marketExposure"][0]["percentage"] == "100%"
 
     def test_top_holdings_schema(self, test_table, sqs_event):
         """Each topHoldings entry must have exactly 'company' and 'percentage'."""
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         holdings = item["topHoldings"]
         assert isinstance(holdings, list) and len(holdings) > 0
         for entry in holdings:
-            assert set(entry.keys()) == {"company", "percentage"}, (
-                f"Unexpected topHoldings entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "company",
+                "percentage",
+            }, f"Unexpected topHoldings entry keys: {set(entry.keys())}"
 
     def test_top_holdings_count(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         assert len(item["topHoldings"]) == 10
 
     def test_industry_exposure_schema(self, test_table, sqs_event):
         """Each industryExposure entry must have exactly 'industry' and 'percentage'."""
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         industries = item["industryExposure"]
         assert isinstance(industries, list) and len(industries) > 0
         for entry in industries:
-            assert set(entry.keys()) == {"industry", "percentage"}, (
-                f"Unexpected industryExposure entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "industry",
+                "percentage",
+            }, f"Unexpected industryExposure entry keys: {set(entry.keys())}"
 
     def test_industry_exposure_count(self, test_table, sqs_event):
-        import lambda_function
+        import insert_factsheet
 
-        lambda_function.lambda_handler(sqs_event, None)
+        insert_factsheet.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
         assert len(item["industryExposure"]) == 10
 
@@ -221,42 +225,38 @@ class TestDynamoDBInsertSuccess:
 class TestDynamoDBInsertErrors:
     def test_returns_500_on_malformed_event(self, test_table):
         """A completely malformed event should return a 500."""
-        import lambda_function
+        import insert_factsheet
 
-        response = lambda_function.lambda_handler(
-            {"Records": [{"body": "not-json"}]}, None
-        )
+        response = insert_factsheet.lambda_handler({"Records": [{"body": "not-json"}]}, None)
         status, _ = _parse_response(response)
         assert status == 500
 
     def test_returns_500_on_missing_records(self, test_table):
         """An event with no Records key should return a 500."""
-        import lambda_function
+        import insert_factsheet
 
-        response = lambda_function.lambda_handler({}, None)
+        response = insert_factsheet.lambda_handler({}, None)
         status, _ = _parse_response(response)
         assert status == 500
 
     def test_error_response_contains_error_message(self, test_table):
         """500 response body must start with 'Error:'."""
-        import lambda_function
+        import insert_factsheet
 
-        response = lambda_function.lambda_handler({}, None)
+        response = insert_factsheet.lambda_handler({}, None)
         _, body = _parse_response(response)
-        assert isinstance(body, str) and body.startswith("Error:"), (
-            f"Expected error body to start with 'Error:', got: {body!r}"
-        )
+        assert isinstance(body, str) and body.startswith(
+            "Error:"
+        ), f"Expected error body to start with 'Error:', got: {body!r}"
 
 
 class TestDynamoDBUpdateErrors:
-    def test_update_item_conditional_check_failed_returns_500(
-        self, test_table, sqs_event
-    ):
+    def test_update_item_conditional_check_failed_returns_500(self, test_table, sqs_event):
         """If the job is not in 'processing' status, update_item raises ConditionalCheckFailedException which bubbles up to a 500."""
-        import lambda_function
+        import insert_factsheet
 
         with patch.object(
-            lambda_function.table,
+            insert_factsheet.table,
             "update_item",
             side_effect=ClientError(
                 {
@@ -268,24 +268,24 @@ class TestDynamoDBUpdateErrors:
                 "UpdateItem",
             ),
         ):
-            response = lambda_function.lambda_handler(sqs_event, None)
+            response = insert_factsheet.lambda_handler(sqs_event, None)
             status, body = _parse_response(response)
             assert status == 500
             assert "ConditionalCheckFailedException" in body
 
     def test_update_item_generic_client_error_returns_500(self, test_table, sqs_event):
         """If DynamoDB throws a generic ClientError, it safely returns a 500."""
-        import lambda_function
+        import insert_factsheet
 
         with patch.object(
-            lambda_function.table,
+            insert_factsheet.table,
             "update_item",
             side_effect=ClientError(
                 {"Error": {"Code": "InternalServerError", "Message": "Error"}},
                 "UpdateItem",
             ),
         ):
-            response = lambda_function.lambda_handler(sqs_event, None)
+            response = insert_factsheet.lambda_handler(sqs_event, None)
             status, body = _parse_response(response)
             assert status == 500
             assert "InternalServerError" in body

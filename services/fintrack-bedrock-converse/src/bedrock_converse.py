@@ -1,20 +1,19 @@
-from prompts import prompts
-import boto3
 import json
-import os
 import logging
+import os
 import urllib.parse
+
+import boto3
 from models.parsed_factsheet import Model as FactsheetModel
+from prompts import prompts
 
 # Configure standard Python logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Load the schema once at startup
-SCHEMA_PATH = os.path.join(
-    os.path.dirname(__file__), "models", "parsed_factsheet_schema.json"
-)
-with open(SCHEMA_PATH, "r") as f:
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "models", "parsed_factsheet_schema.json")
+with open(SCHEMA_PATH) as f:
     SCHEMA_CONTENT = json.load(f)
     # Use a concise version for the prompt
     SCHEMA_STR = json.dumps(SCHEMA_CONTENT, indent=2)
@@ -40,9 +39,7 @@ def lambda_handler(event, context):
     s3_event = json.loads(event["Records"][0]["body"])
 
     bucket_name = s3_event["Records"][0]["s3"]["bucket"]["name"]
-    object_key = urllib.parse.unquote_plus(
-        s3_event["Records"][0]["s3"]["object"]["key"]
-    )
+    object_key = urllib.parse.unquote_plus(s3_event["Records"][0]["s3"]["object"]["key"])
 
     document_name = object_key.split("/")[-1]
     user_id = object_key.split("/")[-2]
@@ -77,12 +74,8 @@ def lambda_handler(event, context):
             "body": json.dumps("Duplicate execution ignored"),
         }
     except Exception as err:
-        error_code = (
-            getattr(err, "response", {}).get("Error", {}).get("Code", "Unknown")
-        )
-        error_msg = (
-            getattr(err, "response", {}).get("Error", {}).get("Message", str(err))
-        )
+        error_code = getattr(err, "response", {}).get("Error", {}).get("Code", "Unknown")
+        error_msg = getattr(err, "response", {}).get("Error", {}).get("Message", str(err))
         logger.error(
             f"Couldn't update job {document_name} in table {table.name}. "
             f"Here's why: {error_code}: {error_msg}"
@@ -141,12 +134,8 @@ def write_failed_extraction_status(user_id, document_name):
             ReturnValues="UPDATED_NEW",
         )
     except Exception as err:
-        error_code = (
-            getattr(err, "response", {}).get("Error", {}).get("Code", "Unknown")
-        )
-        error_msg = (
-            getattr(err, "response", {}).get("Error", {}).get("Message", str(err))
-        )
+        error_code = getattr(err, "response", {}).get("Error", {}).get("Code", "Unknown")
+        error_msg = getattr(err, "response", {}).get("Error", {}).get("Message", str(err))
         logger.error(
             f"Couldn't update job {document_name} in table {table.name}. "
             f"Here's why: {error_code}: {error_msg}"
@@ -212,9 +201,7 @@ def perform_factsheet_extraction(doc_bytes):
         {
             "role": "user",
             "content": [
-                {  # Bedrock requires a non-blank text field to parse a document
-                    "text": " "
-                },
+                {"text": " "},  # Bedrock requires a non-blank text field to parse a document
                 {
                     "document": {
                         "format": "pdf",
