@@ -140,7 +140,7 @@ The pre-commit configuration includes:
 The linting configuration is defined in `pyproject.toml`. Key settings:
 
 - **Line length**: 100 characters
-- **Python target**: 3.8+
+- **Python target**: 3.11+
 - **Ruff rules**: E, W, F, I, C, B, UP
 
 For more details, see the configuration repository documentation.

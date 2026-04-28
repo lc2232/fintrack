@@ -160,7 +160,7 @@ class Analytics:
 
 
 @app.get("/analytics/summary")
-@require_user
+@require_user(app)
 def analytics_summary_get(user_id) -> Any:
     """
     Handle GET /analytics/summary requests to retrieve aggregated financial information for the authenticated user.

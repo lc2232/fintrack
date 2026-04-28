@@ -23,13 +23,13 @@ def setup_path():
     sys.path.insert(0, SERVICES_DIR)
     sys.path.insert(0, LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function", "utils", "utils.auth"):
+        if mod in ("upload_api_handler", "utils", "utils.auth"):
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
     sys.path.remove(SERVICES_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function", "utils", "utils.auth"):
+        if mod in ("upload_api_handler", "utils", "utils.auth"):
             del sys.modules[mod]
 
 
@@ -140,17 +140,17 @@ UUID_RE = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
 
 class TestUploadPostSuccess:
     def test_returns_200(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 200
 
     def test_response_body_schema(self, mocked_aws, api_event, lambda_context):
         """Payload must contain exactly 'jobId' and 'uploadUrl'."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert set(payload.keys()) == {
             "jobId",
@@ -160,18 +160,18 @@ class TestUploadPostSuccess:
     def test_job_id_is_uuid4(self, mocked_aws, api_event, lambda_context):
         import re
 
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert re.match(
             UUID_RE, payload["jobId"]
         ), f"jobId '{payload['jobId']}' is not a valid UUID4"
 
     def test_upload_url_is_s3_presigned(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
         assert isinstance(url, str) and url.startswith(
@@ -183,9 +183,9 @@ class TestUploadPostSuccess:
 
     def test_upload_url_contains_correct_key_prefix(self, mocked_aws, api_event, lambda_context):
         """The presigned URL key must sit under the 'factsheets/' prefix."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
         assert (
@@ -194,9 +194,9 @@ class TestUploadPostSuccess:
 
     def test_upload_url_content_type_is_pdf(self, mocked_aws, api_event, lambda_context):
         """The presigned URL must be signed with content-type (enforces application/pdf upload)."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
         # moto includes ContentType in X-Amz-SignedHeaders; the constraint is enforced at upload time
@@ -206,9 +206,9 @@ class TestUploadPostSuccess:
 
     def test_job_written_to_dynamodb(self, mocked_aws, api_event, lambda_context):
         """A 'pending' job record must be created in DynamoDB with the returned jobId."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         job_id = payload["jobId"]
@@ -222,9 +222,9 @@ class TestUploadPostSuccess:
 
     def test_dynamodb_item_schema_strict(self, mocked_aws, api_event, lambda_context):
         """DynamoDB item must contain exactly {'userId', 'jobId', 'status'} — no extra attributes."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         db_item = mocked_aws["table"].get_item(
@@ -241,11 +241,11 @@ class TestUploadPostSuccess:
         }, f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
 
     def test_each_invocation_produces_unique_job_id(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         ids = set()
         for _ in range(5):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = upload_api_handler.lambda_handler(api_event, lambda_context)
             _, payload = _unwrap(raw)
             ids.add(payload["jobId"])
         assert len(ids) == 5, "Expected 5 unique jobIds across 5 invocations"
@@ -264,9 +264,9 @@ class TestAuthorizerFailure:
 
         api_event["requestContext"]["authorizer"] = {"not_jwt": {}}
 
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 401
 
@@ -275,9 +275,9 @@ class TestAuthorizerFailure:
         if "authorizer" in api_event["requestContext"]:
             del api_event["requestContext"]["authorizer"]
 
-        import lambda_function
+        import upload_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 401
 
@@ -293,9 +293,9 @@ class TestAuthorizerFailure:
 
 
 class TestUploadPostDynamoDBFailure:
-    def _invoke_with_dynamo_error(self, lambda_function, api_event, lambda_context):
+    def _invoke_with_dynamo_error(self, upload_api_handler, api_event, lambda_context):
         with patch.object(
-            lambda_function.table,
+            upload_api_handler.table,
             "put_item",
             side_effect=ClientError(
                 {
@@ -307,29 +307,29 @@ class TestUploadPostDynamoDBFailure:
                 "PutItem",
             ),
         ):
-            return lambda_function.lambda_handler(api_event, lambda_context)
+            return upload_api_handler.lambda_handler(api_event, lambda_context)
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
-        raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
+        raw = self._invoke_with_dynamo_error(upload_api_handler, api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 500
 
     def test_error_body_schema_strict(self, mocked_aws, api_event, lambda_context):
         """Error payload must contain exactly the 'message' key."""
-        import lambda_function
+        import upload_api_handler
 
-        raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
+        raw = self._invoke_with_dynamo_error(upload_api_handler, api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert set(payload.keys()) == {
             "message"
         }, f"Unexpected error payload keys: {set(payload.keys())}"
 
     def test_error_message_value(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
-        raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
+        raw = self._invoke_with_dynamo_error(upload_api_handler, api_event, lambda_context)
         _, payload = _unwrap(raw)
         assert payload["message"] == "Database error"
 
@@ -337,11 +337,11 @@ class TestUploadPostDynamoDBFailure:
         self, mocked_aws, api_event, lambda_context
     ):
         """If DynamoDB fails, S3 generate_presigned_url must not be called."""
-        import lambda_function
+        import upload_api_handler
 
         with (
             patch.object(
-                lambda_function.table,
+                upload_api_handler.table,
                 "put_item",
                 side_effect=ClientError(
                     {
@@ -353,19 +353,19 @@ class TestUploadPostDynamoDBFailure:
                     "PutItem",
                 ),
             ),
-            patch.object(lambda_function.s3_client, "generate_presigned_url") as mock_presign,
+            patch.object(upload_api_handler.s3_client, "generate_presigned_url") as mock_presign,
         ):
-            lambda_function.lambda_handler(api_event, lambda_context)
+            upload_api_handler.lambda_handler(api_event, lambda_context)
             mock_presign.assert_not_called()
 
 
 class TestUploadPostS3Failure:
     def test_returns_500_on_s3_error(self, mocked_aws, api_event, lambda_context):
         """If S3 presigned URL generation fails, it is caught by the global exception handler."""
-        import lambda_function
+        import upload_api_handler
 
         with patch.object(
-            lambda_function.s3_client,
+            upload_api_handler.s3_client,
             "generate_presigned_url",
             side_effect=ClientError(
                 {
@@ -377,7 +377,7 @@ class TestUploadPostS3Failure:
                 "GeneratePresignedUrl",
             ),
         ):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = upload_api_handler.lambda_handler(api_event, lambda_context)
             status, payload = _unwrap(raw)
             assert status == 500
             assert payload["message"] == "Storage error"
@@ -385,7 +385,7 @@ class TestUploadPostS3Failure:
 
 class TestUploadGet:
     def test_returns_200_with_list(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         # Seed DynamoDB
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
@@ -402,7 +402,7 @@ class TestUploadGet:
         api_event["rawPath"] = "/upload"
         api_event["routeKey"] = "GET /upload"
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
@@ -411,7 +411,7 @@ class TestUploadGet:
         assert all(item["userId"] == user_id for item in payload)
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload"
@@ -419,7 +419,7 @@ class TestUploadGet:
         api_event["routeKey"] = "GET /upload"
 
         with patch.object(
-            lambda_function.table,
+            upload_api_handler.table,
             "query",
             side_effect=ClientError(
                 {
@@ -431,14 +431,14 @@ class TestUploadGet:
                 "Query",
             ),
         ):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = upload_api_handler.lambda_handler(api_event, lambda_context)
             status, _ = _unwrap(raw)
             assert status == 500
 
 
 class TestUploadGetJobId:
     def test_returns_200_for_specific_job(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
         mocked_aws["table"].put_item(
@@ -451,7 +451,7 @@ class TestUploadGetJobId:
         api_event["routeKey"] = "GET /upload/{jobId}"
         api_event["pathParameters"] = {"jobId": "test-job"}
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
@@ -459,7 +459,7 @@ class TestUploadGetJobId:
         assert payload[0]["jobId"] == "test-job"
 
     def test_returns_404_if_not_found(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/non-existent"
@@ -467,14 +467,14 @@ class TestUploadGetJobId:
         api_event["routeKey"] = "GET /upload/{jobId}"
         api_event["pathParameters"] = {"jobId": "non-existent"}
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 404
         assert payload["message"] == "Upload not found"
 
     def test_returns_500_on_dynamodb_error(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/test-job"
@@ -483,7 +483,7 @@ class TestUploadGetJobId:
         api_event["pathParameters"] = {"jobId": "test-job"}
 
         with patch.object(
-            lambda_function.table,
+            upload_api_handler.table,
             "query",
             side_effect=ClientError(
                 {
@@ -495,14 +495,14 @@ class TestUploadGetJobId:
                 "Query",
             ),
         ):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = upload_api_handler.lambda_handler(api_event, lambda_context)
             status, _ = _unwrap(raw)
             assert status == 500
 
 
 class TestUploadPatchWeights:
     def test_returns_200_on_success(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
         mocked_aws["table"].put_item(
@@ -526,7 +526,7 @@ class TestUploadPatchWeights:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
@@ -540,7 +540,7 @@ class TestUploadPatchWeights:
         assert float(item2["weighting"]) == 0.6
 
     def test_returns_400_if_weights_dont_sum_to_1(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
@@ -555,14 +555,14 @@ class TestUploadPatchWeights:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 400
         assert payload["message"] == "Weightings must sum to 1"
 
     def test_returns_500_on_dynamodb_transaction_error(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
@@ -578,7 +578,7 @@ class TestUploadPatchWeights:
         )
 
         with patch.object(
-            lambda_function.dynamo_client,
+            upload_api_handler.dynamo_client,
             "transact_write_items",
             side_effect=ClientError(
                 {
@@ -590,14 +590,14 @@ class TestUploadPatchWeights:
                 "TransactWriteItems",
             ),
         ):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = upload_api_handler.lambda_handler(api_event, lambda_context)
             status, _ = _unwrap(raw)
             assert status == 500
 
 
 class TestNewRoutesUnauthorized:
     def test_upload_get_unauthorized(self, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload"
@@ -605,12 +605,12 @@ class TestNewRoutesUnauthorized:
         api_event["routeKey"] = "GET /upload"
         del api_event["requestContext"]["authorizer"]["jwt"]
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 401
 
     def test_upload_get_job_id_unauthorized(self, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "GET"
         api_event["requestContext"]["http"]["path"] = "/upload/test-job"
@@ -619,12 +619,12 @@ class TestNewRoutesUnauthorized:
         api_event["pathParameters"] = {"jobId": "test-job"}
         del api_event["requestContext"]["authorizer"]["jwt"]
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 401
 
     def test_upload_patch_weights_unauthorized(self, api_event, lambda_context):
-        import lambda_function
+        import upload_api_handler
 
         api_event["requestContext"]["http"]["method"] = "PATCH"
         api_event["requestContext"]["http"]["path"] = "/upload/weights"
@@ -633,6 +633,6 @@ class TestNewRoutesUnauthorized:
         api_event["body"] = json.dumps({"weights": []})
         del api_event["requestContext"]["authorizer"]["jwt"]
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = upload_api_handler.lambda_handler(api_event, lambda_context)
         status, _ = _unwrap(raw)
         assert status == 401

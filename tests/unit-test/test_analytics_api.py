@@ -23,15 +23,15 @@ def setup_path():
     """Add the lambda directory to sys.path and ensure a clean module import."""
     sys.path.insert(0, SERVICES_DIR)
     sys.path.insert(0, LAMBDA_DIR)
-    # Ensure fresh import of lambda_function for each test
+    # Ensure fresh import of analytics_api_handler for each test
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function", "utils", "utils.auth"):
+        if mod in ("analytics_api_handler", "utils", "utils.auth"):
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
     sys.path.remove(SERVICES_DIR)
     for mod in list(sys.modules.keys()):
-        if mod in ("lambda_function", "utils", "utils.auth"):
+        if mod in ("analytics_api_handler", "utils", "utils.auth"):
             del sys.modules[mod]
 
 
@@ -121,7 +121,7 @@ def _unwrap(raw: dict) -> tuple[int, dict]:
 
 class TestAnalyticsSummarySuccess:
     def test_analytics_summary_200(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         # Seed DynamoDB with one completed job
         user_id = "test-user-123"
@@ -138,16 +138,16 @@ class TestAnalyticsSummarySuccess:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
-        assert payload["portfolio_industry_exposure"]["Tech"] == 100.0
-        assert payload["portfolio_market_exposure"]["USA"] == 100.0
-        assert payload["portfolio_top_holdings"]["Apple"] == 10.0
+        assert payload["portfolio_industry_exposure"]["Tech"] == "100.0"
+        assert payload["portfolio_market_exposure"]["USA"] == "100.0"
+        assert payload["portfolio_top_holdings"]["Apple"] == "10.0"
 
     def test_analytics_summary_multi_fund_aggregation(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         user_id = "test-user-123"
 
@@ -181,25 +181,25 @@ class TestAnalyticsSummarySuccess:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
         # Tech: (100 * 0.6) + (50 * 0.4) = 60 + 20 = 80
-        assert payload["portfolio_industry_exposure"]["Tech"] == 80.0
+        assert payload["portfolio_industry_exposure"]["Tech"] == "80.0"
         # Energy: (50 * 0.4) = 20
-        assert payload["portfolio_industry_exposure"]["Energy"] == 20.0
+        assert payload["portfolio_industry_exposure"]["Energy"] == "20.0"
         # USA: (100 * 0.6) = 60
-        assert payload["portfolio_market_exposure"]["USA"] == 60.0
+        assert payload["portfolio_market_exposure"]["USA"] == "60.0"
         # UK: (100 * 0.4) = 40
-        assert payload["portfolio_market_exposure"]["UK"] == 40.0
+        assert payload["portfolio_market_exposure"]["UK"] == "40.0"
         # Apple: (10 * 0.6) = 6
-        assert payload["portfolio_top_holdings"]["Apple"] == 6.0
+        assert payload["portfolio_top_holdings"]["Apple"] == "6.0"
         # BP: (20 * 0.4) = 8
-        assert payload["portfolio_top_holdings"]["BP"] == 8.0
+        assert payload["portfolio_top_holdings"]["BP"] == "8.0"
 
     def test_ignores_non_completed_jobs(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         user_id = "test-user-123"
 
@@ -230,18 +230,18 @@ class TestAnalyticsSummarySuccess:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         assert "Energy" not in payload["portfolio_industry_exposure"]
-        assert payload["portfolio_industry_exposure"]["Tech"] == 100.0
+        assert payload["portfolio_industry_exposure"]["Tech"] == "100.0"
 
 
 class TestAnalyticsSummaryEmpty:
     def test_analytics_summary_empty_db(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
@@ -252,12 +252,12 @@ class TestAnalyticsSummaryEmpty:
 
 class TestAnalyticsSummaryUnauthorized:
     def test_401_on_missing_sub(self, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         # Remove the JWT sub claim
         del api_event["requestContext"]["authorizer"]["jwt"]
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 401
@@ -266,10 +266,10 @@ class TestAnalyticsSummaryUnauthorized:
 
 class TestAnalyticsSummaryDynamoDBFailure:
     def test_500_on_query_failure(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         with patch.object(
-            lambda_function.table,
+            analytics_api_handler.table,
             "query",
             side_effect=ClientError(
                 {
@@ -281,7 +281,7 @@ class TestAnalyticsSummaryDynamoDBFailure:
                 "Query",
             ),
         ):
-            raw = lambda_function.lambda_handler(api_event, lambda_context)
+            raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
             status, payload = _unwrap(raw)
 
             assert status == 500
@@ -292,17 +292,17 @@ class TestAnalyticsDataParsing:
     def test_sanitize_percentage(self, api_event, lambda_context):
         # We can test this by calling the Analytics class directly if it's imported,
         # or by seating DB and seeing results. Testing the class directly is cleaner.
-        import lambda_function
+        import analytics_api_handler
 
-        analytics = lambda_function.Analytics([])
-        assert analytics._sanitize_percentage("10.5") == 10.5
-        assert analytics._sanitize_percentage("0") == 0.0
-        assert analytics._sanitize_percentage(None) == 0.0
-        assert analytics._sanitize_percentage("") == 0.0
+        analytics = analytics_api_handler.Analytics([])
+        assert analytics._sanitize_percentage("10.5") == Decimal("10.5")
+        assert analytics._sanitize_percentage("0") == Decimal("0.0")
+        assert analytics._sanitize_percentage(None) == Decimal("0.0")
+        assert analytics._sanitize_percentage("") == Decimal("0.0")
 
     def test_missing_data_fields(self, mocked_aws, api_event, lambda_context):
         """Test how it handles empty industry list or missing fields."""
-        import lambda_function
+        import analytics_api_handler
 
         user_id = "test-user-123"
 
@@ -319,29 +319,29 @@ class TestAnalyticsDataParsing:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 200
         # Empty industry/exposure should be skipped due to skip logic in summary()
         assert payload["portfolio_industry_exposure"] == {}
         assert payload["portfolio_market_exposure"] == {}
-        assert payload["portfolio_top_holdings"]["Apple"] == 10.0
+        assert payload["portfolio_top_holdings"]["Apple"] == "10.0"
 
     def test_unsupported_authorizer_type(self, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         # Set authorizer to something other than jwt
         api_event["requestContext"]["authorizer"] = {"apiKey": "some-key"}
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         status, payload = _unwrap(raw)
 
         assert status == 401
         assert payload["message"] == "Unauthorized user"
 
     def test_duplicate_market_and_holdings(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         user_id = "test-user-123"
 
@@ -358,16 +358,16 @@ class TestAnalyticsDataParsing:
         mocked_aws["table"].put_item(Item={**item_template, "jobId": "job-1", "name": "Fund A"})
         mocked_aws["table"].put_item(Item={**item_template, "jobId": "job-2", "name": "Fund B"})
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         # (100 * 0.5) + (100 * 0.5) = 100
-        assert payload["portfolio_market_exposure"]["USA"] == 100.0
+        assert payload["portfolio_market_exposure"]["USA"] == "100.0"
         # (10 * 0.5) + (10 * 0.5) = 10
-        assert payload["portfolio_top_holdings"]["Apple"] == 10.0
+        assert payload["portfolio_top_holdings"]["Apple"] == "10.0"
 
     def test_empty_market_and_holding_names(self, mocked_aws, api_event, lambda_context):
-        import lambda_function
+        import analytics_api_handler
 
         user_id = "test-user-123"
 
@@ -384,7 +384,7 @@ class TestAnalyticsDataParsing:
             }
         )
 
-        raw = lambda_function.lambda_handler(api_event, lambda_context)
+        raw = analytics_api_handler.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
 
         assert payload["portfolio_market_exposure"] == {}

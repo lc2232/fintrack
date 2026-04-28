@@ -21,12 +21,12 @@ EVENT_FILE_PATH = os.path.join(BASE_DIR, "events", "sqs_s3_new_object_event.json
 def setup_path():
     sys.path.insert(0, LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod == "lambda_function":
+        if mod == "bedrock_converse":
             del sys.modules[mod]
     yield
     sys.path.remove(LAMBDA_DIR)
     for mod in list(sys.modules.keys()):
-        if mod == "lambda_function":
+        if mod == "bedrock_converse":
             del sys.modules[mod]
 
 
@@ -118,12 +118,12 @@ def generate_mock_factsheet(total_exposure=100.0, isin="TEST1234", name="Test Fu
 # ---------------------------------------------------------------------------
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_lambda_handler_success(mock_converse, mocked_aws):
-    import lambda_function
+    import bedrock_converse
 
     # Override QUEUE_URL to use the moto-generated one
-    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+    bedrock_converse.QUEUE_URL = mocked_aws["queue_url"]
 
     mock_converse.return_value = {
         "output": {
@@ -137,7 +137,7 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
-    response = lambda_function.lambda_handler(event, None)
+    response = bedrock_converse.lambda_handler(event, None)
 
     # --- Response schema ---
     assert isinstance(response, dict), "Response must be a dict"
@@ -162,12 +162,12 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
     ), f"Expected DynamoDB status 'processing', got '{item.get('status')}'"
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_sqs_message_schema_strict(mock_converse, mocked_aws):
     """SQS message body must contain exactly 'jobId', 'userId' and 'extracted_text'."""
-    import lambda_function
+    import bedrock_converse
 
-    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+    bedrock_converse.QUEUE_URL = mocked_aws["queue_url"]
     mock_converse.return_value = {
         "output": {
             "message": {
@@ -180,7 +180,7 @@ def test_sqs_message_schema_strict(mock_converse, mocked_aws):
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
-    lambda_function.lambda_handler(event, None)
+    bedrock_converse.lambda_handler(event, None)
 
     sqs_messages = mocked_aws["sqs"].receive_message(
         QueueUrl=mocked_aws["queue_url"],
@@ -194,13 +194,13 @@ def test_sqs_message_schema_strict(mock_converse, mocked_aws):
     }, f"Unexpected SQS message keys: {set(body.keys())}"
 
 
-@patch("lambda_function.bedrock_model_converse")
-@patch("lambda_function.write_failed_extraction_status")
+@patch("bedrock_converse.bedrock_model_converse")
+@patch("bedrock_converse.write_failed_extraction_status")
 def test_no_sqs_message_when_bedrock_returns_empty(mock_write_failed, mock_converse, mocked_aws):
     """If Bedrock returns no text, no SQS message should be sent and returns 500."""
-    import lambda_function
+    import bedrock_converse
 
-    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+    bedrock_converse.QUEUE_URL = mocked_aws["queue_url"]
     mock_converse.return_value = {
         "output": {"message": {"role": "assistant", "content": [{"text": ""}]}}
     }
@@ -208,7 +208,7 @@ def test_no_sqs_message_when_bedrock_returns_empty(mock_write_failed, mock_conve
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
-    response = lambda_function.lambda_handler(event, None)
+    response = bedrock_converse.lambda_handler(event, None)
 
     assert response["statusCode"] == 500
     mock_write_failed.assert_called_once_with("user-123", "sample-fund-report.pdf")
@@ -224,39 +224,39 @@ def test_no_sqs_message_when_bedrock_returns_empty(mock_write_failed, mock_conve
 # ---------------------------------------------------------------------------
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_lambda_handler_conditional_check_failed(mock_converse, mocked_aws):
     """If DynamoDB update fails with ConditionalCheckFailedException, it should return 200."""
-    import lambda_function
+    import bedrock_converse
 
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     # We need to mock the specific error code on the table's update_item
     with patch.object(
-        lambda_function.table,
+        bedrock_converse.table,
         "update_item",
-        side_effect=lambda_function.dynamodb.meta.client.exceptions.ConditionalCheckFailedException(
+        side_effect=bedrock_converse.dynamodb.meta.client.exceptions.ConditionalCheckFailedException(
             {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Msg"}},
             "UpdateItem",
         ),
     ):
-        response = lambda_function.lambda_handler(event, None)
+        response = bedrock_converse.lambda_handler(event, None)
         assert response["statusCode"] == 200
         assert "Duplicate execution ignored" in response["body"]
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_lambda_handler_generic_dynamodb_error(mock_converse, mocked_aws):
     """If DynamoDB update fails with a non-conditional error, it should raise."""
-    import lambda_function
+    import bedrock_converse
 
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     # We need to mock the specific error code on the table's update_item
     with patch.object(
-        lambda_function.table,
+        bedrock_converse.table,
         "update_item",
         side_effect=ClientError(
             {"Error": {"Code": "ResourceNotFoundException", "Message": "Msg"}},
@@ -264,52 +264,52 @@ def test_lambda_handler_generic_dynamodb_error(mock_converse, mocked_aws):
         ),
     ):
         with pytest.raises(ClientError):
-            lambda_function.lambda_handler(event, None)
+            bedrock_converse.lambda_handler(event, None)
 
 
 def test_bedrock_model_converse_success(mocked_aws):
-    import lambda_function
+    import bedrock_converse
 
     with patch.object(
-        lambda_function.bedrock,
+        bedrock_converse.bedrock,
         "converse",
         return_value={
             "output": {"message": {"role": "assistant", "content": [{"text": "response"}]}}
         },
     ):
-        response = lambda_function.bedrock_model_converse([], "prompt")
+        response = bedrock_converse.bedrock_model_converse([], "prompt")
         assert response["output"]["message"]["content"][0]["text"] == "response"
 
 
 def test_bedrock_converse_client_error(mocked_aws):
     """If Bedrock converse throws ClientError, it should raise and be logged."""
-    import lambda_function
+    import bedrock_converse
 
-    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+    bedrock_converse.QUEUE_URL = mocked_aws["queue_url"]
 
     with open(EVENT_FILE_PATH) as f:
         event = json.load(f)
 
     # Need to patch the specific exception that bedrock throws
     with patch.object(
-        lambda_function.bedrock,
+        bedrock_converse.bedrock,
         "converse",
-        side_effect=lambda_function.bedrock.exceptions.ClientError(
+        side_effect=bedrock_converse.bedrock.exceptions.ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Too many requests"}},
             "Converse",
         ),
     ):
-        with pytest.raises(lambda_function.bedrock.exceptions.ClientError) as exc_info:
-            lambda_function.lambda_handler(event, None)
+        with pytest.raises(bedrock_converse.bedrock.exceptions.ClientError) as exc_info:
+            bedrock_converse.lambda_handler(event, None)
         assert exc_info.value.response["Error"]["Code"] == "ThrottlingException"
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_sqs_send_message_client_error(mock_converse, mocked_aws):
     """If SQS send_message throws ClientError, it should raise and be logged."""
-    import lambda_function
+    import bedrock_converse
 
-    lambda_function.QUEUE_URL = mocked_aws["queue_url"]
+    bedrock_converse.QUEUE_URL = mocked_aws["queue_url"]
 
     mock_converse.return_value = {
         "output": {
@@ -324,15 +324,15 @@ def test_sqs_send_message_client_error(mock_converse, mocked_aws):
         event = json.load(f)
 
     with patch.object(
-        lambda_function.sqs,
+        bedrock_converse.sqs,
         "send_message",
-        side_effect=lambda_function.sqs.exceptions.ClientError(
+        side_effect=bedrock_converse.sqs.exceptions.ClientError(
             {"Error": {"Code": "AccessDenied", "Message": "Msg"}},
             "SendMessage",
         ),
     ):
-        with pytest.raises(lambda_function.sqs.exceptions.ClientError) as exc_info:
-            lambda_function.lambda_handler(event, None)
+        with pytest.raises(bedrock_converse.sqs.exceptions.ClientError) as exc_info:
+            bedrock_converse.lambda_handler(event, None)
         assert exc_info.value.response["Error"]["Code"] == "AccessDenied"
 
 
@@ -343,11 +343,11 @@ def test_sqs_send_message_client_error(mock_converse, mocked_aws):
 
 def test_validate_factsheet_logic_error():
     """Test validate_factsheet with exposure > 100%."""
-    import lambda_function
+    import bedrock_converse
 
     # Generate factsheet with 110% exposure
     bad_json = generate_mock_factsheet(total_exposure=110.0)
-    valid, error = lambda_function.validate_factsheet(bad_json)
+    valid, error = bedrock_converse.validate_factsheet(bad_json)
 
     assert valid is False
     assert "exceeds 100%" in error
@@ -355,19 +355,19 @@ def test_validate_factsheet_logic_error():
 
 def test_validate_factsheet_schema_error():
     """Test validate_factsheet with invalid JSON schema (missing required fields)."""
-    import lambda_function
+    import bedrock_converse
 
     bad_json = json.dumps({"isin": "TEST"})
-    valid, error = lambda_function.validate_factsheet(bad_json)
+    valid, error = bedrock_converse.validate_factsheet(bad_json)
 
     assert valid is False
     assert "format" in error.lower() or "validation" in error.lower()
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_perform_factsheet_extraction_retry_success(mock_converse):
     """Test that extraction retries on validation failure and eventually succeeds."""
-    import lambda_function
+    import bedrock_converse
 
     # First attempt: invalid (exposure > 100)
     # Second attempt: valid
@@ -390,15 +390,15 @@ def test_perform_factsheet_extraction_retry_success(mock_converse):
         },
     ]
 
-    result = lambda_function.perform_factsheet_extraction(b"pdf bytes")
+    result = bedrock_converse.perform_factsheet_extraction(b"pdf bytes")
     assert result is not None
     assert mock_converse.call_count == 2
 
 
-@patch("lambda_function.bedrock_model_converse")
+@patch("bedrock_converse.bedrock_model_converse")
 def test_perform_factsheet_extraction_all_retries_fail(mock_converse):
     """Test that extraction fails after 4 unsuccessful attempts."""
-    import lambda_function
+    import bedrock_converse
 
     # All 4 attempts return invalid JSON
     mock_converse.return_value = {
@@ -410,14 +410,14 @@ def test_perform_factsheet_extraction_all_retries_fail(mock_converse):
         }
     }
 
-    result = lambda_function.perform_factsheet_extraction(b"pdf bytes")
+    result = bedrock_converse.perform_factsheet_extraction(b"pdf bytes")
     assert result is None
     assert mock_converse.call_count == 4
 
 
 def test_write_failed_extraction_status_success(mocked_aws):
     """Verify write_failed_extraction_status updates DynamoDB correctly."""
-    import lambda_function
+    import bedrock_converse
 
     # Pre-set the job to 'processing' so validation passes
     mocked_aws["dynamo_table"].update_item(
@@ -427,7 +427,7 @@ def test_write_failed_extraction_status_success(mocked_aws):
         ExpressionAttributeNames={"#s": "status"},
     )
 
-    lambda_function.write_failed_extraction_status("user-123", "sample-fund-report.pdf")
+    bedrock_converse.write_failed_extraction_status("user-123", "sample-fund-report.pdf")
 
     item = mocked_aws["dynamo_table"].get_item(
         Key={"userId": "user-123", "jobId": "sample-fund-report.pdf"}
@@ -437,14 +437,14 @@ def test_write_failed_extraction_status_success(mocked_aws):
 
 def test_write_failed_extraction_status_error(mocked_aws):
     """Verify write_failed_extraction_status logs error but doesn't raise."""
-    import lambda_function
+    import bedrock_converse
 
     with patch.object(
-        lambda_function.table,
+        bedrock_converse.table,
         "update_item",
         side_effect=ClientError(
             {"Error": {"Code": "InternalServerError", "Message": "Msg"}}, "UpdateItem"
         ),
     ):
         # Should not raise
-        lambda_function.write_failed_extraction_status("user-123", "job-1")
+        bedrock_converse.write_failed_extraction_status("user-123", "job-1")

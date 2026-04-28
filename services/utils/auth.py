@@ -23,22 +23,23 @@ def extract_user_id(event):
     return authorizer.get("jwt", {}).get("claims", {}).get("sub")
 
 
-def require_user(func):
+def require_user(app):
     """Decorator to ensure a valid user_id is present before calling the route."""
 
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        from lambda_function import app
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            user_id = extract_user_id(app.current_event)
 
-        user_id = extract_user_id(app.current_event)
+            if not user_id:
+                logger.error("No user_id found in authorizer claims")
+                return {
+                    "statusCode": 401,
+                    "body": json.dumps({"message": "Unauthorized user"}),
+                }
 
-        if not user_id:
-            logger.error("No user_id found in authorizer claims")
-            return {
-                "statusCode": 401,
-                "body": json.dumps({"message": "Unauthorized user"}),
-            }
+            return func(user_id, *args, **kwargs)
 
-        return func(user_id, *args, **kwargs)
+        return wrapper
 
-    return wrapper
+    return decorator
