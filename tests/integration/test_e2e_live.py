@@ -1,11 +1,12 @@
-import os
-import pytest
-import requests
-import time
-import json
-import boto3
 import base64
 import glob
+import json
+import os
+import time
+
+import boto3
+import pytest
+import requests
 
 # Apply the live marker to all tests in this file
 pytestmark = pytest.mark.live
@@ -58,9 +59,7 @@ def test_full_upload_and_processing_pipeline(terraform_outputs, cleanup_data):
     jwt_token = os.environ.get("FINTRACK_JWT_TOKEN")
 
     if not jwt_token:
-        pytest.skip(
-            "FINTRACK_JWT_TOKEN environment variable must be set to run live E2E tests."
-        )
+        pytest.skip("FINTRACK_JWT_TOKEN environment variable must be set to run live E2E tests.")
 
     # 1. Request upload URL
     url = f"{base_url}/upload"
@@ -102,9 +101,7 @@ def test_full_upload_and_processing_pipeline(terraform_outputs, cleanup_data):
 
     s3_headers = {"Content-Type": "application/pdf"}
     upload_response = requests.put(upload_url, data=pdf_content, headers=s3_headers)
-    assert upload_response.status_code == 200, (
-        f"S3 Upload failed: {upload_response.text}"
-    )
+    assert upload_response.status_code == 200, f"S3 Upload failed: {upload_response.text}"
 
     # 3. Poll for completion
     max_retries = 12
@@ -136,16 +133,12 @@ def test_full_upload_and_processing_pipeline(terraform_outputs, cleanup_data):
                 # Validation test via schema
                 job_record = JobRecord(**job)
 
-                assert job_record.isin != "UNKNOWN", (
-                    "Bedrock failed to extract ISIN - this depends on the dummy data but usually indicates extraction failed"
-                )
-                assert len(job_record.marketExposure) > 0, (
-                    "No market exposure was extracted"
-                )
+                assert (
+                    job_record.isin != "UNKNOWN"
+                ), "Bedrock failed to extract ISIN - this depends on the dummy data but usually indicates extraction failed"
+                assert len(job_record.marketExposure) > 0, "No market exposure was extracted"
             except Exception as e:
-                pytest.fail(
-                    f"Job completed but data failed schema contract validation: {e}"
-                )
+                pytest.fail(f"Job completed but data failed schema contract validation: {e}")
 
             completed = True
             break
@@ -154,6 +147,6 @@ def test_full_upload_and_processing_pipeline(terraform_outputs, cleanup_data):
 
         time.sleep(delay)
 
-    assert completed, (
-        f"Job {job_id} did not complete within {max_retries * delay} seconds. Last status: {job.get('status')}"
-    )
+    assert (
+        completed
+    ), f"Job {job_id} did not complete within {max_retries * delay} seconds. Last status: {job.get('status')}"

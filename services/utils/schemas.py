@@ -1,10 +1,10 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -12,8 +12,8 @@ class JobStatus(str, Enum):
 
 
 class ExposureItem(BaseModel):
-    name: Optional[str]
-    percentage: Optional[Decimal]
+    name: str | None
+    percentage: Decimal | None
 
 
 class ExtractedFactsheet(BaseModel):
@@ -21,12 +21,12 @@ class ExtractedFactsheet(BaseModel):
     Schema for the data extracted from a factsheet PDF, typically by Bedrock.
     """
 
-    isin: Optional[str] = "UNKNOWN"
-    name: Optional[str] = "UNKNOWN"
-    documentDate: Optional[str] = "UNKNOWN"
-    marketExposure: List[ExposureItem] = Field(default_factory=list)
-    topHoldings: List[ExposureItem] = Field(default_factory=list)
-    industryExposure: List[ExposureItem] = Field(default_factory=list)
+    isin: str | None = "UNKNOWN"
+    name: str | None = "UNKNOWN"
+    documentDate: str | None = "UNKNOWN"
+    marketExposure: list[ExposureItem] = Field(default_factory=list)
+    topHoldings: list[ExposureItem] = Field(default_factory=list)
+    industryExposure: list[ExposureItem] = Field(default_factory=list)
 
 
 class JobRecord(BaseModel):
@@ -42,9 +42,9 @@ class JobRecord(BaseModel):
     weighting: Decimal = Field(default=Decimal("0.0"))
 
     # Factsheet fields populated upon completion
-    isin: Optional[str] = None
-    name: Optional[str] = None
-    documentDate: Optional[str] = None
-    marketExposure: Optional[List[ExposureItem]] = None
-    topHoldings: Optional[List[ExposureItem]] = None
-    industryExposure: Optional[List[ExposureItem]] = None
+    isin: str | None = None
+    name: str | None = None
+    documentDate: str | None = None
+    marketExposure: list[ExposureItem] | None = None
+    topHoldings: list[ExposureItem] | None = None
+    industryExposure: list[ExposureItem] | None = None

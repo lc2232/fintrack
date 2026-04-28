@@ -1,11 +1,12 @@
-import sys
-import os
 import json
-import pytest
-import boto3
-from moto import mock_aws
-from botocore.exceptions import ClientError
+import os
+import sys
 from unittest.mock import patch
+
+import boto3
+import pytest
+from botocore.exceptions import ClientError
+from moto import mock_aws
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-factsheet-insert-dynamoDB")
@@ -104,18 +105,18 @@ class TestDynamoDBInsertSuccess:
         response = lambda_function.lambda_handler(sqs_event, None)
         _, body = _parse_response(response)
         assert isinstance(body, str), "Response body should be a string message"
-        assert FIXTURE_JOB_ID in body, (
-            f"Expected jobId '{FIXTURE_JOB_ID}' in response body, got: {body!r}"
-        )
+        assert (
+            FIXTURE_JOB_ID in body
+        ), f"Expected jobId '{FIXTURE_JOB_ID}' in response body, got: {body!r}"
 
     def test_item_status_set_to_completed(self, test_table, sqs_event):
         import lambda_function
 
         lambda_function.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
-        assert item["status"] == "completed", (
-            f"Expected status 'completed', got '{item.get('status')}'"
-        )
+        assert (
+            item["status"] == "completed"
+        ), f"Expected status 'completed', got '{item.get('status')}'"
 
     def test_item_schema_strict(self, test_table, sqs_event):
         """Updated DynamoDB item must contain exactly the expected keys."""
@@ -133,9 +134,9 @@ class TestDynamoDBInsertSuccess:
 
         lambda_function.lambda_handler(sqs_event, None)
         item = test_table.get_item(Key={"jobId": FIXTURE_JOB_ID})["Item"]
-        assert set(item.keys()) == expected_keys, (
-            f"Unexpected DynamoDB item keys.\n  Got:      {set(item.keys())}\n  Expected: {expected_keys}"
-        )
+        assert (
+            set(item.keys()) == expected_keys
+        ), f"Unexpected DynamoDB item keys.\n  Got:      {set(item.keys())}\n  Expected: {expected_keys}"
 
     def test_name_field(self, test_table, sqs_event):
         import lambda_function
@@ -160,9 +161,10 @@ class TestDynamoDBInsertSuccess:
         exposures = item["marketExposure"]
         assert isinstance(exposures, list) and len(exposures) > 0
         for entry in exposures:
-            assert set(entry.keys()) == {"country", "percentage"}, (
-                f"Unexpected marketExposure entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "country",
+                "percentage",
+            }, f"Unexpected marketExposure entry keys: {set(entry.keys())}"
 
     def test_market_exposure_values(self, test_table, sqs_event):
         import lambda_function
@@ -181,9 +183,10 @@ class TestDynamoDBInsertSuccess:
         holdings = item["topHoldings"]
         assert isinstance(holdings, list) and len(holdings) > 0
         for entry in holdings:
-            assert set(entry.keys()) == {"company", "percentage"}, (
-                f"Unexpected topHoldings entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "company",
+                "percentage",
+            }, f"Unexpected topHoldings entry keys: {set(entry.keys())}"
 
     def test_top_holdings_count(self, test_table, sqs_event):
         import lambda_function
@@ -201,9 +204,10 @@ class TestDynamoDBInsertSuccess:
         industries = item["industryExposure"]
         assert isinstance(industries, list) and len(industries) > 0
         for entry in industries:
-            assert set(entry.keys()) == {"industry", "percentage"}, (
-                f"Unexpected industryExposure entry keys: {set(entry.keys())}"
-            )
+            assert set(entry.keys()) == {
+                "industry",
+                "percentage",
+            }, f"Unexpected industryExposure entry keys: {set(entry.keys())}"
 
     def test_industry_exposure_count(self, test_table, sqs_event):
         import lambda_function
@@ -223,9 +227,7 @@ class TestDynamoDBInsertErrors:
         """A completely malformed event should return a 500."""
         import lambda_function
 
-        response = lambda_function.lambda_handler(
-            {"Records": [{"body": "not-json"}]}, None
-        )
+        response = lambda_function.lambda_handler({"Records": [{"body": "not-json"}]}, None)
         status, _ = _parse_response(response)
         assert status == 500
 
@@ -243,15 +245,13 @@ class TestDynamoDBInsertErrors:
 
         response = lambda_function.lambda_handler({}, None)
         _, body = _parse_response(response)
-        assert isinstance(body, str) and body.startswith("Error:"), (
-            f"Expected error body to start with 'Error:', got: {body!r}"
-        )
+        assert isinstance(body, str) and body.startswith(
+            "Error:"
+        ), f"Expected error body to start with 'Error:', got: {body!r}"
 
 
 class TestDynamoDBUpdateErrors:
-    def test_update_item_conditional_check_failed_returns_500(
-        self, test_table, sqs_event
-    ):
+    def test_update_item_conditional_check_failed_returns_500(self, test_table, sqs_event):
         """If the job is not in 'processing' status, update_item raises ConditionalCheckFailedException which bubbles up to a 500."""
         import lambda_function
 

@@ -1,11 +1,12 @@
-import sys
-import os
 import json
-import pytest
-import boto3
+import os
+import sys
 from unittest.mock import patch
-from moto import mock_aws
+
+import boto3
+import pytest
 from botocore.exceptions import ClientError
+from moto import mock_aws
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LAMBDA_DIR = os.path.join(BASE_DIR, "services", "fintrack-bedrock-converse", "src")
@@ -156,9 +157,9 @@ def test_lambda_handler_success(mock_converse, mocked_aws):
     item = mocked_aws["dynamo_table"].get_item(
         Key={"userId": "user-123", "jobId": "sample-fund-report.pdf"}
     )["Item"]
-    assert item["status"] == "processing", (
-        f"Expected DynamoDB status 'processing', got '{item.get('status')}'"
-    )
+    assert (
+        item["status"] == "processing"
+    ), f"Expected DynamoDB status 'processing', got '{item.get('status')}'"
 
 
 @patch("lambda_function.bedrock_model_converse")
@@ -186,16 +187,16 @@ def test_sqs_message_schema_strict(mock_converse, mocked_aws):
         MaxNumberOfMessages=1,
     )
     body = json.loads(sqs_messages["Messages"][0]["Body"])
-    assert set(body.keys()) == {"jobId", "userId", "extracted_text"}, (
-        f"Unexpected SQS message keys: {set(body.keys())}"
-    )
+    assert set(body.keys()) == {
+        "jobId",
+        "userId",
+        "extracted_text",
+    }, f"Unexpected SQS message keys: {set(body.keys())}"
 
 
 @patch("lambda_function.bedrock_model_converse")
 @patch("lambda_function.write_failed_extraction_status")
-def test_no_sqs_message_when_bedrock_returns_empty(
-    mock_write_failed, mock_converse, mocked_aws
-):
+def test_no_sqs_message_when_bedrock_returns_empty(mock_write_failed, mock_converse, mocked_aws):
     """If Bedrock returns no text, no SQS message should be sent and returns 500."""
     import lambda_function
 
@@ -215,9 +216,7 @@ def test_no_sqs_message_when_bedrock_returns_empty(
         QueueUrl=mocked_aws["queue_url"],
         MaxNumberOfMessages=1,
     )
-    assert "Messages" not in result, (
-        "Expected no SQS message when Bedrock returns empty text"
-    )
+    assert "Messages" not in result, "Expected no SQS message when Bedrock returns empty text"
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +274,7 @@ def test_bedrock_model_converse_success(mocked_aws):
         lambda_function.bedrock,
         "converse",
         return_value={
-            "output": {
-                "message": {"role": "assistant", "content": [{"text": "response"}]}
-            }
+            "output": {"message": {"role": "assistant", "content": [{"text": "response"}]}}
         },
     ):
         response = lambda_function.bedrock_model_converse([], "prompt")
@@ -430,9 +427,7 @@ def test_write_failed_extraction_status_success(mocked_aws):
         ExpressionAttributeNames={"#s": "status"},
     )
 
-    lambda_function.write_failed_extraction_status(
-        "user-123", "sample-fund-report.pdf"
-    )
+    lambda_function.write_failed_extraction_status("user-123", "sample-fund-report.pdf")
 
     item = mocked_aws["dynamo_table"].get_item(
         Key={"userId": "user-123", "jobId": "sample-fund-report.pdf"}

@@ -1,7 +1,9 @@
-import boto3
-import os
 import json
+import os
 from decimal import Decimal
+from typing import Any
+
+import boto3
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.event_handler import (
     APIGatewayHttpResolver,
@@ -11,7 +13,6 @@ from aws_lambda_powertools.event_handler import (
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
-
 from utils.auth import require_user
 from utils.schemas import JobRecord
 
@@ -28,7 +29,7 @@ class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
-        return super(DecimalEncoder, self).default(obj)
+        return super().default(obj)
 
 
 # Centralised error handling to reduce duplication and provide more accurate messaging
@@ -36,9 +37,7 @@ class DecimalEncoder(json.JSONEncoder):
 def handle_aws_error(ex: ClientError):
     operation = getattr(ex, "operation_name", "Unknown")
 
-    logger.exception(
-        "Internal service error", extra={"Exception": str(ex), "Operation": operation}
-    )
+    logger.exception("Internal service error", extra={"Exception": str(ex), "Operation": operation})
 
     return Response(
         status_code=500,
@@ -56,7 +55,7 @@ class Analytics:
 
     def __init__(self, data: list[dict]):
         self.data = data
-        self.factsheets = []
+        self.factsheets: list[JobRecord] = []
         self._extract_data()
 
     def _extract_data(self):
@@ -81,7 +80,7 @@ class Analytics:
         else:
             return Decimal("0.0")
 
-    def summary(self):
+    def summary(self):  # noqa: C901 <-- TODO: Function is too complex, refactor
         """
         The summary API returns an overall exposures and holdings for the authenticated user.
 
@@ -99,9 +98,9 @@ class Analytics:
         # Then sum them up to get the overall portfolio exposures and holdings
         # If two factsheets have the same industry, market or holding, add them together to create full picture
 
-        portfolio_industry_exposure = {}
-        portfolio_market_exposure = {}
-        portfolio_top_holdings = {}
+        portfolio_industry_exposure: dict[str, Decimal] = {}
+        portfolio_market_exposure: dict[str, Decimal] = {}
+        portfolio_top_holdings: dict[str, Decimal] = {}
 
         for factsheet in self.factsheets:
             logger.info(f"Factsheet: {factsheet.name}")
@@ -115,19 +114,11 @@ class Analytics:
 
                     logger.info(f"Industry: {name}, Exposure: {exposure}")
                     if name in portfolio_industry_exposure:
-                        logger.info(
-                            f"Industry {name} already in portfolio_industry_exposure"
-                        )
-                        portfolio_industry_exposure[name] += (
-                            exposure * factsheet.weighting
-                        )
+                        logger.info(f"Industry {name} already in portfolio_industry_exposure")
+                        portfolio_industry_exposure[name] += exposure * factsheet.weighting
                     else:
-                        logger.info(
-                            f"Industry {name} not in portfolio_industry_exposure"
-                        )
-                        portfolio_industry_exposure[name] = (
-                            exposure * factsheet.weighting
-                        )
+                        logger.info(f"Industry {name} not in portfolio_industry_exposure")
+                        portfolio_industry_exposure[name] = exposure * factsheet.weighting
 
             if factsheet.marketExposure:
                 for item in factsheet.marketExposure:
@@ -139,12 +130,8 @@ class Analytics:
 
                     logger.info(f"Market: {name}, Exposure: {exposure}")
                     if name in portfolio_market_exposure:
-                        logger.info(
-                            f"Market {name} already in portfolio_market_exposure"
-                        )
-                        portfolio_market_exposure[name] += (
-                            exposure * factsheet.weighting
-                        )
+                        logger.info(f"Market {name} already in portfolio_market_exposure")
+                        portfolio_market_exposure[name] += exposure * factsheet.weighting
                     else:
                         logger.info(f"Market {name} not in portfolio_market_exposure")
                         portfolio_market_exposure[name] = exposure * factsheet.weighting
@@ -174,7 +161,7 @@ class Analytics:
 
 @app.get("/analytics/summary")
 @require_user
-def analytics_summary_get(user_id):
+def analytics_summary_get(user_id) -> Any:
     """
     Handle GET /analytics/summary requests to retrieve aggregated financial information for the authenticated user.
     """
@@ -195,7 +182,7 @@ def analytics_summary_get(user_id):
     # Step 3: Return the aggregated data
     logger.info(f"Summary Response : {summary}")
 
-    return json.dumps(summary, cls=DecimalEncoder)
+    return summary
 
 
 @logger.inject_lambda_context(correlation_id_path=correlation_paths.API_GATEWAY_HTTP)

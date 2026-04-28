@@ -1,11 +1,12 @@
-import sys
-import os
 import json
-import pytest
+import os
+import sys
+from unittest.mock import MagicMock, patch
+
 import boto3
-from unittest.mock import patch, MagicMock
-from moto import mock_aws
+import pytest
 from botocore.exceptions import ClientError
+from moto import mock_aws
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SERVICES_DIR = os.path.join(BASE_DIR, "services")
@@ -86,9 +87,7 @@ def lambda_context():
     ctx = MagicMock()
     ctx.function_name = "fintrack-upload-api"
     ctx.memory_limit_in_mb = 128
-    ctx.invoked_function_arn = (
-        "arn:aws:lambda:eu-west-2:123456789012:function:fintrack-upload-api"
-    )
+    ctx.invoked_function_arn = "arn:aws:lambda:eu-west-2:123456789012:function:fintrack-upload-api"
     ctx.aws_request_id = "test-request-id"
     return ctx
 
@@ -122,11 +121,7 @@ def _unwrap(raw: dict) -> tuple[int, dict]:
     body_content = json.loads(raw["body"])
 
     # Check if it's a double envelope
-    if (
-        isinstance(body_content, dict)
-        and "statusCode" in body_content
-        and "body" in body_content
-    ):
+    if isinstance(body_content, dict) and "statusCode" in body_content and "body" in body_content:
         # Layer 2 is the handler return
         inner_status = body_content["statusCode"]
         payload = json.loads(body_content["body"])
@@ -157,19 +152,21 @@ class TestUploadPostSuccess:
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
-        assert set(payload.keys()) == {"jobId", "uploadUrl"}, (
-            f"Unexpected payload keys: {set(payload.keys())}"
-        )
+        assert set(payload.keys()) == {
+            "jobId",
+            "uploadUrl",
+        }, f"Unexpected payload keys: {set(payload.keys())}"
 
     def test_job_id_is_uuid4(self, mocked_aws, api_event, lambda_context):
         import re
+
         import lambda_function
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
-        assert re.match(UUID_RE, payload["jobId"]), (
-            f"jobId '{payload['jobId']}' is not a valid UUID4"
-        )
+        assert re.match(
+            UUID_RE, payload["jobId"]
+        ), f"jobId '{payload['jobId']}' is not a valid UUID4"
 
     def test_upload_url_is_s3_presigned(self, mocked_aws, api_event, lambda_context):
         import lambda_function
@@ -177,29 +174,25 @@ class TestUploadPostSuccess:
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
-        assert isinstance(url, str) and url.startswith("https://"), (
-            f"uploadUrl is not a valid HTTPS URL: {url!r}"
-        )
-        assert "X-Amz-Signature" in url, (
-            "uploadUrl does not look like a presigned S3 URL (missing X-Amz-Signature)"
-        )
+        assert isinstance(url, str) and url.startswith(
+            "https://"
+        ), f"uploadUrl is not a valid HTTPS URL: {url!r}"
+        assert (
+            "X-Amz-Signature" in url
+        ), "uploadUrl does not look like a presigned S3 URL (missing X-Amz-Signature)"
 
-    def test_upload_url_contains_correct_key_prefix(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_upload_url_contains_correct_key_prefix(self, mocked_aws, api_event, lambda_context):
         """The presigned URL key must sit under the 'factsheets/' prefix."""
         import lambda_function
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
-        assert "factsheets%2F" in url or "factsheets/" in url, (
-            "uploadUrl does not contain expected 'factsheets/' key prefix"
-        )
+        assert (
+            "factsheets%2F" in url or "factsheets/" in url
+        ), "uploadUrl does not contain expected 'factsheets/' key prefix"
 
-    def test_upload_url_content_type_is_pdf(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_upload_url_content_type_is_pdf(self, mocked_aws, api_event, lambda_context):
         """The presigned URL must be signed with content-type (enforces application/pdf upload)."""
         import lambda_function
 
@@ -207,9 +200,9 @@ class TestUploadPostSuccess:
         _, payload = _unwrap(raw)
         url = payload["uploadUrl"]
         # moto includes ContentType in X-Amz-SignedHeaders; the constraint is enforced at upload time
-        assert "content-type" in url.lower(), (
-            "uploadUrl does not include content-type in its signed parameters"
-        )
+        assert (
+            "content-type" in url.lower()
+        ), "uploadUrl does not include content-type in its signed parameters"
 
     def test_job_written_to_dynamodb(self, mocked_aws, api_event, lambda_context):
         """A 'pending' job record must be created in DynamoDB with the returned jobId."""
@@ -220,16 +213,12 @@ class TestUploadPostSuccess:
 
         job_id = payload["jobId"]
         user_id = api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-        db_item = (
-            mocked_aws["table"]
-            .get_item(Key={"userId": user_id, "jobId": job_id})
-            .get("Item")
-        )
+        db_item = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": job_id}).get("Item")
         assert db_item is not None, f"No DynamoDB item found for jobId '{job_id}'"
         assert db_item["jobId"] == job_id
-        assert db_item["status"] == "pending", (
-            f"Expected status 'pending', got '{db_item.get('status')}'"
-        )
+        assert (
+            db_item["status"] == "pending"
+        ), f"Expected status 'pending', got '{db_item.get('status')}'"
 
     def test_dynamodb_item_schema_strict(self, mocked_aws, api_event, lambda_context):
         """DynamoDB item must contain exactly {'userId', 'jobId', 'status'} — no extra attributes."""
@@ -240,19 +229,18 @@ class TestUploadPostSuccess:
 
         db_item = mocked_aws["table"].get_item(
             Key={
-                "userId": api_event["requestContext"]["authorizer"]["jwt"]["claims"][
-                    "sub"
-                ],
+                "userId": api_event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"],
                 "jobId": payload["jobId"],
             }
         )["Item"]
-        assert set(db_item.keys()) == {"userId", "jobId", "status", "weighting"}, (
-            f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
-        )
+        assert set(db_item.keys()) == {
+            "userId",
+            "jobId",
+            "status",
+            "weighting",
+        }, f"Unexpected DynamoDB item keys: {set(db_item.keys())}"
 
-    def test_each_invocation_produces_unique_job_id(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_each_invocation_produces_unique_job_id(self, mocked_aws, api_event, lambda_context):
         import lambda_function
 
         ids = set()
@@ -334,9 +322,9 @@ class TestUploadPostDynamoDBFailure:
 
         raw = self._invoke_with_dynamo_error(lambda_function, api_event, lambda_context)
         _, payload = _unwrap(raw)
-        assert set(payload.keys()) == {"message"}, (
-            f"Unexpected error payload keys: {set(payload.keys())}"
-        )
+        assert set(payload.keys()) == {
+            "message"
+        }, f"Unexpected error payload keys: {set(payload.keys())}"
 
     def test_error_message_value(self, mocked_aws, api_event, lambda_context):
         import lambda_function
@@ -365,9 +353,7 @@ class TestUploadPostDynamoDBFailure:
                     "PutItem",
                 ),
             ),
-            patch.object(
-                lambda_function.s3_client, "generate_presigned_url"
-            ) as mock_presign,
+            patch.object(lambda_function.s3_client, "generate_presigned_url") as mock_presign,
         ):
             lambda_function.lambda_handler(api_event, lambda_context)
             mock_presign.assert_not_called()
@@ -406,9 +392,7 @@ class TestUploadGet:
         mocked_aws["table"].put_item(
             Item={"userId": user_id, "jobId": "job1", "status": "completed"}
         )
-        mocked_aws["table"].put_item(
-            Item={"userId": user_id, "jobId": "job2", "status": "pending"}
-        )
+        mocked_aws["table"].put_item(Item={"userId": user_id, "jobId": "job2", "status": "pending"})
         mocked_aws["table"].put_item(
             Item={"userId": "other-user", "jobId": "job3", "status": "pending"}
         )
@@ -549,19 +533,13 @@ class TestUploadPatchWeights:
         assert payload["message"] == "Weighting updated"
 
         # Verify DB
-        item1 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job1"})[
-            "Item"
-        ]
-        item2 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job2"})[
-            "Item"
-        ]
+        item1 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job1"})["Item"]
+        item2 = mocked_aws["table"].get_item(Key={"userId": user_id, "jobId": "job2"})["Item"]
         # Decimal to float comparison
         assert float(item1["weighting"]) == 0.4
         assert float(item2["weighting"]) == 0.6
 
-    def test_returns_400_if_weights_dont_sum_to_1(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_returns_400_if_weights_dont_sum_to_1(self, mocked_aws, api_event, lambda_context):
         import lambda_function
 
         api_event["requestContext"]["http"]["method"] = "PATCH"
@@ -583,9 +561,7 @@ class TestUploadPatchWeights:
         assert status == 400
         assert payload["message"] == "Weightings must sum to 1"
 
-    def test_returns_500_on_dynamodb_transaction_error(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_returns_500_on_dynamodb_transaction_error(self, mocked_aws, api_event, lambda_context):
         import lambda_function
 
         api_event["requestContext"]["http"]["method"] = "PATCH"

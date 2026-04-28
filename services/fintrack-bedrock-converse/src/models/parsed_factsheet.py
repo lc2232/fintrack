@@ -28,6 +28,4 @@ class Model(BaseModel):
     documentDate: str | None
     marketExposure: list[MarketExposureItem] = Field(..., max_length=10, min_length=10)
     topHoldings: list[TopHolding] = Field(..., max_length=10, min_length=10)
-    industryExposure: list[IndustryExposureItem] = Field(
-        ..., max_length=10, min_length=10
-    )
+    industryExposure: list[IndustryExposureItem] = Field(..., max_length=10, min_length=10)

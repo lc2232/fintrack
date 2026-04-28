@@ -1,0 +1,3 @@
+[submodule "python-style-config"]
+	path = python-style-config
+	url = https://github.com/lc2232/python-tool-setup.git

@@ -1,12 +1,13 @@
-import sys
-import os
 import json
-import pytest
-import boto3
+import os
+import sys
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
-from moto import mock_aws
+from unittest.mock import MagicMock, patch
+
+import boto3
+import pytest
 from botocore.exceptions import ClientError
+from moto import mock_aws
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SERVICES_DIR = os.path.join(BASE_DIR, "services")
@@ -70,9 +71,7 @@ def mocked_aws(aws_credentials):
 def api_event():
     """Default API Gateway HTTP v2 event for GET /analytics/summary."""
     print(f"BASSE DIR {BASE_DIR}")
-    event_path = os.path.join(
-        BASE_DIR, "events", "apigw_get_analytics_summary_event.json"
-    )
+    event_path = os.path.join(BASE_DIR, "events", "apigw_get_analytics_summary_event.json")
     print(event_path)
     with open(event_path) as f:
         return json.load(f)
@@ -105,11 +104,7 @@ def _unwrap(raw: dict) -> tuple[int, dict]:
     body_content = json.loads(raw["body"])
 
     # Check if it's a double envelope
-    if (
-        isinstance(body_content, dict)
-        and "statusCode" in body_content
-        and "body" in body_content
-    ):
+    if isinstance(body_content, dict) and "statusCode" in body_content and "body" in body_content:
         # Layer 2 is the handler return
         inner_status = body_content["statusCode"]
         payload = json.loads(body_content["body"])
@@ -151,9 +146,7 @@ class TestAnalyticsSummarySuccess:
         assert payload["portfolio_market_exposure"]["USA"] == 100.0
         assert payload["portfolio_top_holdings"]["Apple"] == 10.0
 
-    def test_analytics_summary_multi_fund_aggregation(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_analytics_summary_multi_fund_aggregation(self, mocked_aws, api_event, lambda_context):
         import lambda_function
 
         user_id = "test-user-123"
@@ -362,12 +355,8 @@ class TestAnalyticsDataParsing:
             "topHoldings": [{"name": "Apple", "percentage": "10"}],
         }
 
-        mocked_aws["table"].put_item(
-            Item={**item_template, "jobId": "job-1", "name": "Fund A"}
-        )
-        mocked_aws["table"].put_item(
-            Item={**item_template, "jobId": "job-2", "name": "Fund B"}
-        )
+        mocked_aws["table"].put_item(Item={**item_template, "jobId": "job-1", "name": "Fund A"})
+        mocked_aws["table"].put_item(Item={**item_template, "jobId": "job-2", "name": "Fund B"})
 
         raw = lambda_function.lambda_handler(api_event, lambda_context)
         _, payload = _unwrap(raw)
@@ -377,9 +366,7 @@ class TestAnalyticsDataParsing:
         # (10 * 0.5) + (10 * 0.5) = 10
         assert payload["portfolio_top_holdings"]["Apple"] == 10.0
 
-    def test_empty_market_and_holding_names(
-        self, mocked_aws, api_event, lambda_context
-    ):
+    def test_empty_market_and_holding_names(self, mocked_aws, api_event, lambda_context):
         import lambda_function
 
         user_id = "test-user-123"

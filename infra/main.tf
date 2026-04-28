@@ -404,7 +404,7 @@ resource "aws_lambda_function" "fintrack_dynamodb_insert_lambda_function" {
   function_name    = "fintrack_dynamodb_insert_lambda_tf"
   filename         = "../out/services/fintrack-factsheet-insert-dynamoDB.zip"
   source_code_hash = data.archive_file.fintrack_dynamodb_insert_lambda.output_base64sha256
-  handler          = "lambda_function.lambda_handler"
+  handler          = "insert-factsheet.lambda_handler"
   runtime          = "python3.14"
   role             = aws_iam_role.fintrack_dynamodb_insert_lambda_role.arn
   timeout          = 60

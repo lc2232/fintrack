@@ -1,8 +1,10 @@
-import pytest
-import os
-import sys
-import subprocess
 import json
+import os
+import subprocess
+import sys
+
+import pytest
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_path():
@@ -24,9 +26,7 @@ def terraform_outputs():
     without hardcoding any ARNs, URLs, or generated names.
     """
     # Navigate to the infra directory relative to this file
-    infra_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "infra")
-    )
+    infra_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "infra"))
 
     try:
         result = subprocess.run(
@@ -57,9 +57,7 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "live: mark test as requiring a live environment to run"
-    )
+    config.addinivalue_line("markers", "live: mark test as requiring a live environment to run")
 
 
 def pytest_collection_modifyitems(config, items):
