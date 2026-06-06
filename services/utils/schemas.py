@@ -29,6 +29,19 @@ class ExtractedFactsheet(BaseModel):
     industryExposure: list[ExposureItem] = Field(default_factory=list)
 
 
+class FundSnapshot(BaseModel):
+    """
+    Cached fund data scraped from JustETF, keyed by ISIN in fintrack_fund_cache.
+    """
+
+    isin: str
+    name: str
+    topHoldings: list[ExposureItem] = Field(default_factory=list)
+    marketExposure: list[ExposureItem] = Field(default_factory=list)
+    scrapedAt: str
+    source: str = "justetf"
+
+
 class JobRecord(BaseModel):
     """
     Schema representing a DynamoDB record for a factsheet processing job.

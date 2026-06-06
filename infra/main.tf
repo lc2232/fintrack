@@ -143,6 +143,21 @@ resource "aws_dynamodb_table" "fintrack_factsheet_table" {
   }
 }
 
+resource "aws_dynamodb_table" "fintrack_fund_cache_table" {
+  name         = "fintrack_fund_cache"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "isin"
+
+  attribute {
+    name = "isin"
+    type = "S"
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+}
+
 # ============== IAM Role for Converse Lambda ==============
 resource "aws_iam_role" "fintrack_bedrock_converse_lambda_role" {
   name = "fintrack_bedrock_converse_lambda_role"
@@ -371,6 +386,55 @@ resource "aws_iam_role_policy_attachment" "fintrack_analytics_api_policy_attachm
   policy_arn = aws_iam_policy.fintrack_analytics_api_policy.arn
 }
 
+# ============== IAM Role for Scraper API Lambda ==============
+resource "aws_iam_role" "fintrack_scraper_api_lambda_role" {
+  name = "fintrack_scraper_api_lambda_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "scraper_api_basic_execution" {
+  role       = aws_iam_role.fintrack_scraper_api_lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "fintrack_scraper_api_policy" {
+  name        = "fintrack_scraper_api_policy"
+  description = "Policy for reading and writing scraped fund cache in DynamoDB"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "dynamodb:GetItem"
+        Resource = aws_dynamodb_table.fintrack_fund_cache_table.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "dynamodb:PutItem"
+        Resource = aws_dynamodb_table.fintrack_fund_cache_table.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "fintrack_scraper_api_policy_attachment" {
+  role       = aws_iam_role.fintrack_scraper_api_lambda_role.name
+  policy_arn = aws_iam_policy.fintrack_scraper_api_policy.arn
+}
+
 # ============== Lambda Functions ==============
 
 data "aws_ecr_repository" "fintrack-converse-repository" {
@@ -451,6 +515,26 @@ resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.fintrack_factsheet_table.name
+    }
+  }
+}
+
+data "aws_ecr_repository" "fintrack-scraper-repository" {
+  name = "fintrack/scraper"
+}
+
+resource "aws_lambda_function" "fintrack_scraper_lambda_function" {
+  function_name = "fintrack_scraper_lambda_tf"
+  image_uri     = "${data.aws_ecr_repository.fintrack-scraper-repository.repository_url}:v0.1"
+  package_type  = "Image"
+  role          = aws_iam_role.fintrack_scraper_api_lambda_role.arn
+  timeout       = 60
+  architectures = ["arm64"]
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE  = aws_dynamodb_table.fintrack_fund_cache_table.name
+      CACHE_TTL_DAYS  = "7"
     }
   }
 }
@@ -561,6 +645,35 @@ resource "aws_apigatewayv2_route" "fintrack_upload_patch_job_route" {
   authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
 }
 
+resource "aws_apigatewayv2_integration" "fintrack_scraper_integration" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  integration_uri        = aws_lambda_function.fintrack_scraper_lambda_function.invoke_arn
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "fintrack_scraper_get_fund_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "GET /funds/{isin}"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_scraper_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_route" "fintrack_scraper_refresh_fund_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "POST /funds/{isin}/refresh"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_scraper_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
 resource "aws_apigatewayv2_authorizer" "fintrack_authoriser" {
   api_id           = aws_apigatewayv2_api.lambda_api.id
   authorizer_type  = "JWT"
@@ -592,6 +705,15 @@ resource "aws_lambda_permission" "api_gw_analytics" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.fintrack_analytics_lambda_function.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_apigatewayv2_api.lambda_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "api_gw_scraper" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.fintrack_scraper_lambda_function.function_name
   principal     = "apigateway.amazonaws.com"
 
   source_arn = "${aws_apigatewayv2_api.lambda_api.execution_arn}/*/*"
@@ -661,6 +783,11 @@ output "document_upload_queue_url" {
 output "dynamodb_table_name" {
   description = "Name of the DynamoDB table"
   value       = aws_dynamodb_table.fintrack_factsheet_table.name
+}
+
+output "fund_cache_table_name" {
+  description = "Name of the DynamoDB fund cache table"
+  value       = aws_dynamodb_table.fintrack_fund_cache_table.name
 }
 
 output "api_gateway_url" {

@@ -1,0 +1,22 @@
+{
+    "version": "2.0",
+    "routeKey": "GET /funds/{isin}",
+    "rawPath": "/funds/IE00B3XXRP09",
+    "pathParameters": {
+        "isin": "IE00B3XXRP09"
+    },
+    "requestContext": {
+        "stage": "$default",
+        "authorizer": {
+            "jwt": {
+                "claims": {
+                    "sub": "test-user-123"
+                }
+            }
+        },
+        "http": {
+            "method": "GET",
+            "path": "/funds/IE00B3XXRP09"
+        }
+    }
+}
