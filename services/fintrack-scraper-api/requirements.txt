@@ -1,0 +1,4 @@
+aws-lambda-powertools[all]==3.18.0
+pydantic==2.10.4
+httpx>=0.28.0
+beautifulsoup4>=4.12.0

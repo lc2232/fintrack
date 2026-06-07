@@ -1,0 +1,22 @@
+{
+    "version": "2.0",
+    "routeKey": "POST /funds/{isin}/refresh",
+    "rawPath": "/funds/IE00B3XXRP09/refresh",
+    "pathParameters": {
+        "isin": "IE00B3XXRP09"
+    },
+    "requestContext": {
+        "stage": "$default",
+        "authorizer": {
+            "jwt": {
+                "claims": {
+                    "sub": "test-user-123"
+                }
+            }
+        },
+        "http": {
+            "method": "POST",
+            "path": "/funds/IE00B3XXRP09/refresh"
+        }
+    }
+}
