@@ -1,14 +1,41 @@
 # Fintrack Frontend
 
-A single-page frontend application for Fintrack. This is a zero-dependency, pure HTML/CSS/JS frontend. It can be opened directly in a browser or served via any static file server.
+A single-page frontend application for Fintrack. This is a zero-dependency, pure HTML/CSS/JS frontend built with native ES modules — **no build step and no npm dependencies**. Serve it via any static file server.
 
 ## Overview
 
 The frontend connects to the deployed Fintrack AWS backend to provide a fully-functional dashboard.
 
+## Project structure
+
+The single-file app has been split into focused, separately-maintainable files:
+
+```
+frontend/
+  index.html          markup only (loads the stylesheet + js/main.js as a module)
+  css/styles.css       all styles ("Editorial Ledger" theme)
+  js/
+    config.js          backend/environment configuration
+    session.js         in-memory IdToken store
+    store.js           shared portfolio-jobs cache
+    api.js             authenticated fetch helper
+    ui.js              toast, inline errors, spinners
+    auth.js            Cognito login / sign-out
+    navigation.js      login↔app shell + section routing
+    jobs.js            Jobs view
+    upload.js          Add → Upload PDF
+    funds.js           Add → Add fund by ISIN
+    weights.js         Weights view
+    analytics.js       Analytics view
+    main.js            entry point — wires up event listeners
+```
+
+Each module attaches its own event listeners (no inline `onclick` handlers / global
+functions). Views fetch their data lazily when first shown.
+
 ## Configuration
 
-The API configuration is hardcoded at the top of the `<script>` tag within `index.html`.
+The API configuration lives in `js/config.js`.
 
 | Key | Value |
 |-----|-------|
@@ -63,4 +90,4 @@ python3 -m http.server 8080
 # → open http://localhost:8080
 ```
 
-> **❗️Note**: Opening `file://` directly works for the login flow but S3 presigned URL PUT requests may be blocked by CORS in some browsers. Using a local server (`localhost`) avoids this.
+> **❗️Note**: The app **must be served over HTTP** (e.g. `localhost`) rather than opened via `file://`. Browsers block native ES module loading and S3 presigned PUT requests under the `file://` scheme. The command above serves it correctly.
