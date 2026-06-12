@@ -32,9 +32,29 @@ def _normalize_percentage(value: str) -> str:
     return value.strip().removesuffix("%")
 
 
+def _scrape_exposure(soup: BeautifulSoup, key: str) -> list[dict]:
+    """
+    Extract a name/percentage exposure list (e.g. countries or sectors) from a JustETF profile.
+
+    `key` is the data-testid segment, such as "countries" or "sectors".
+    """
+    names = [
+        el.get_text(strip=True)
+        for el in soup.select(f'[data-testid="tl_etf-holdings_{key}_value_name"]')
+    ]
+    pcts = [
+        _normalize_percentage(el.get_text(strip=True))
+        for el in soup.select(f'[data-testid="tl_etf-holdings_{key}_value_percentage"]')
+    ]
+    return [
+        {"name": name, "percentage": Decimal(pct)} for name, pct in zip(names, pcts, strict=True)
+    ]
+
+
 def scrape_fund(isin: str) -> dict:
     """
-    Scrape top 10 holdings and country allocation from JustETF for the given ISIN.
+    Scrape top 10 holdings, country allocation, and sector allocation from JustETF for the
+    given ISIN.
 
     Returns a dict compatible with FundSnapshot (without scrapedAt).
     """
@@ -66,28 +86,18 @@ def scrape_fund(isin: str) -> dict:
     if not holding_names:
         raise NoHoldingsDataError(f"No holdings data available for ISIN {isin}")
 
-    country_names = [
-        el.get_text(strip=True)
-        for el in soup.select('[data-testid="tl_etf-holdings_countries_value_name"]')
-    ]
-    country_pcts = [
-        _normalize_percentage(el.get_text(strip=True))
-        for el in soup.select('[data-testid="tl_etf-holdings_countries_value_percentage"]')
-    ]
-
     top_holdings = [
         {"name": name, "percentage": Decimal(pct)}
         for name, pct in zip(holding_names, holding_pcts, strict=True)
     ]
-    market_exposure = [
-        {"name": name, "percentage": Decimal(pct)}
-        for name, pct in zip(country_names, country_pcts, strict=True)
-    ]
+    market_exposure = _scrape_exposure(soup, "countries")
+    industry_exposure = _scrape_exposure(soup, "sectors")
 
     return {
         "isin": isin,
         "name": name_el.get_text(strip=True),
         "topHoldings": top_holdings,
         "marketExposure": market_exposure,
+        "industryExposure": industry_exposure,
         "source": "justetf",
     }

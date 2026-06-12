@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import boto3
@@ -15,9 +16,10 @@ from aws_lambda_powertools.utilities.typing.lambda_context import LambdaContext
 from botocore.exceptions import ClientError
 from scraper import FundNotFoundError, NoHoldingsDataError, scrape_fund, validate_isin
 from utils.auth import require_user
-from utils.schemas import ExposureItem, FundSnapshot
+from utils.schemas import ExposureItem, FundSnapshot, JobRecord, JobStatus
 
 DYNAMO_TABLE = os.environ["DYNAMODB_TABLE"]
+FACTSHEET_TABLE = os.environ["FACTSHEET_TABLE"]
 CACHE_TTL_DAYS = int(os.environ.get("CACHE_TTL_DAYS", "7"))
 
 app = APIGatewayHttpResolver()
@@ -25,6 +27,7 @@ logger = Logger()
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMO_TABLE)
+factsheet_table = dynamodb.Table(FACTSHEET_TABLE)
 
 
 @app.exception_handler(ClientError)
@@ -48,6 +51,7 @@ def _snapshot_to_db_item(snapshot: FundSnapshot) -> dict:
         "name": snapshot.name,
         "topHoldings": _exposure_items_to_db(snapshot.topHoldings),
         "marketExposure": _exposure_items_to_db(snapshot.marketExposure),
+        "industryExposure": _exposure_items_to_db(snapshot.industryExposure),
         "scrapedAt": snapshot.scrapedAt,
         "source": snapshot.source,
     }
@@ -147,6 +151,55 @@ def refresh_fund(user_id, isin: str) -> Any:
 
     logger.info("Fund refresh", extra={"isin": isin, "user_id": user_id})
     return _snapshot_to_response(result, cached=False)
+
+
+def _snapshot_to_job_record(user_id: str, snapshot: FundSnapshot) -> JobRecord:
+    """
+    Materialise a scraped fund into a completed portfolio item (JobRecord) for the user.
+
+    A deterministic jobId keyed on the ISIN means re-adding the same fund overwrites the
+    existing item rather than creating a duplicate. weighting defaults to 0.0; the user sets it
+    later via PATCH /upload/weights.
+    """
+    return JobRecord(
+        userId=user_id,
+        jobId=f"justetf-{snapshot.isin}",
+        status=JobStatus.COMPLETED,
+        weighting=Decimal("0.0"),
+        source=snapshot.source,
+        isin=snapshot.isin,
+        name=snapshot.name,
+        documentDate=snapshot.scrapedAt,
+        marketExposure=snapshot.marketExposure,
+        topHoldings=snapshot.topHoldings,
+        industryExposure=snapshot.industryExposure,
+    )
+
+
+@app.post("/funds/<isin>/portfolio")
+@require_user(app)
+def add_fund_to_portfolio(user_id, isin: str) -> Any:
+    """
+    Add a fund (looked up by ISIN via the JustETF scraper) to the authenticated user's
+    portfolio so it is analysed alongside PDF-sourced factsheets by GET /analytics/summary.
+    """
+    result, cached = _lookup_fund(isin, force_refresh=False)
+    if isinstance(result, Response):
+        return result
+
+    record = _snapshot_to_job_record(user_id, result)
+    factsheet_table.put_item(Item=record.model_dump(exclude_none=True))
+
+    logger.info(
+        "Fund added to portfolio",
+        extra={"isin": record.isin, "user_id": user_id, "jobId": record.jobId, "cached": cached},
+    )
+    return {
+        "jobId": record.jobId,
+        "isin": record.isin,
+        "source": record.source,
+        "cached": cached,
+    }
 
 
 @logger.inject_lambda_context(correlation_id_path=correlation_paths.API_GATEWAY_HTTP)

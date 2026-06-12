@@ -45,7 +45,7 @@ def lambda_handler(event, context):
                 },
                 # Only update if the job exists and is in processing state, helps ensure idempotent updates
                 ConditionExpression="attribute_exists(jobId) AND #s = :expected_status",
-                UpdateExpression="SET #s=:s, #i=:i, #n=:n, #d=:d, #m=:m, #t=:t, #e=:e",
+                UpdateExpression="SET #s=:s, #i=:i, #n=:n, #d=:d, #m=:m, #t=:t, #e=:e, #src=:src",
                 ExpressionAttributeValues={
                     ":s": "completed",
                     ":i": isin,
@@ -54,6 +54,7 @@ def lambda_handler(event, context):
                     ":m": market_exposure,
                     ":t": top_holdings,
                     ":e": industry_exposure,
+                    ":src": "pdf",
                     ":expected_status": "processing",
                 },
                 ExpressionAttributeNames={
@@ -64,6 +65,7 @@ def lambda_handler(event, context):
                     "#m": "marketExposure",
                     "#t": "topHoldings",
                     "#e": "industryExposure",
+                    "#src": "source",
                 },  # status is a reserved word in the UpdateExpression, but not reserved in the attribute name
                 ReturnValues="UPDATED_NEW",
             )

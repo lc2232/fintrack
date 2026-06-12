@@ -67,7 +67,6 @@ class Analytics:
             try:
                 record = JobRecord(**row)
                 self.factsheets.append(record)
-                raise
             except Exception as e:
                 logger.error(f"Skipping malformed record {row.get('jobId')}: {e}")
 
