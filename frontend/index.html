@@ -323,6 +323,11 @@
       color: #991b1b;
     }
 
+    .badge-source {
+      background: #eef0f2;
+      color: #555;
+    }
+
     /* ── Alert / Toast ── */
     #toast {
       position: fixed;
@@ -549,7 +554,7 @@
       <div class="logo">Fintrack</div>
       <nav>
         <button id="nav-jobs" class="active" onclick="showSection('jobs')">Jobs</button>
-        <button id="nav-upload" onclick="showSection('upload')">Upload</button>
+        <button id="nav-upload" onclick="showSection('upload')">Add</button>
         <button id="nav-weights" onclick="showSection('weights')">Weights</button>
         <button id="nav-analytics" onclick="showSection('analytics')">Analytics</button>
       </nav>
@@ -574,12 +579,13 @@
         </div>
       </div>
 
-      <!-- ── Upload ── -->
+      <!-- ── Add (Upload PDF / Add by ISIN) ── -->
       <div id="section-upload" class="section">
-        <h1>Upload Factsheet</h1>
-        <p class="page-sub">Upload a PDF factsheet to create a new analysis job.</p>
+        <h1>Add to Portfolio</h1>
+        <p class="page-sub">Add a fund either by uploading a PDF factsheet or by ISIN lookup (JustETF).</p>
+
         <div class="card">
-          <div class="card-title">Select file</div>
+          <div class="card-title">Upload PDF factsheet</div>
           <div id="drop-zone" onclick="document.getElementById('file-input').click()">
             <strong>Click to select or drop a PDF</strong>
             Max file size 10 MB · PDF only
@@ -589,6 +595,22 @@
           <div id="upload-file-name" style="font-size:13px; color:var(--muted); margin-bottom:12px; display:none"></div>
           <button id="upload-btn" class="btn btn-primary" onclick="doUpload()" disabled>Upload</button>
           <div id="upload-status" style="margin-top:12px; font-size:13px; color:var(--muted)"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Add fund by ISIN</div>
+          <p style="color:var(--muted); font-size:13px; margin-bottom:16px">
+            Look up an ETF/fund on JustETF by its ISIN and add it straight to your portfolio.
+            Top holdings, market and industry exposure are fetched automatically — no PDF needed.
+          </p>
+          <div class="field">
+            <label for="isin-input">ISIN</label>
+            <input id="isin-input" type="text" placeholder="e.g. IE00B3XXRP09" maxlength="12"
+              autocomplete="off" spellcheck="false" oninput="onIsinInput()"
+              onkeydown="if(event.key==='Enter')doAddFund()" />
+          </div>
+          <button id="add-fund-btn" class="btn btn-primary" onclick="doAddFund()" disabled>Add fund</button>
+          <div id="add-fund-status" style="margin-top:12px; font-size:13px; color:var(--muted)"></div>
         </div>
       </div>
 
@@ -745,13 +767,14 @@
 
     function renderJobs(jobs, el) {
       if (!jobs || jobs.length === 0) {
-        el.innerHTML = '<p class="empty">No jobs yet. Head to Upload to add your first factsheet.</p>';
+        el.innerHTML = '<p class="empty">No jobs yet. Head to Add to upload a factsheet or add a fund by ISIN.</p>';
         return;
       }
       const rows = jobs.map(j => `
       <tr>
         <td class="mono">${j.jobId.slice(0, 8)}…</td>
         <td>${j.name || '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${sourceBadge(j.source)}</td>
         <td><span class="badge badge-${j.status}">${j.status}</span></td>
         <td>${j.weighting != null ? (parseFloat(j.weighting) * 100).toFixed(1) + '%' : '—'}</td>
       </tr>
@@ -762,12 +785,19 @@
           <tr>
             <th>Job ID</th>
             <th>Fund Name</th>
+            <th>Source</th>
             <th>Status</th>
             <th>Weight</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
+    }
+
+    function sourceBadge(source) {
+      if (source === 'justetf') return '<span class="badge badge-source">JustETF</span>';
+      if (source === 'pdf') return '<span class="badge badge-source">PDF</span>';
+      return '<span style="color:var(--muted)">—</span>';
     }
 
     // ═══════════════════ UPLOAD ═══════════════════
@@ -833,6 +863,40 @@
         status.textContent = '';
         btn.disabled = false;
         btn.textContent = 'Upload';
+      }
+    }
+
+    // ═══════════════════ ADD FUND BY ISIN ═══════════════════
+    function onIsinInput() {
+      const isin = document.getElementById('isin-input').value.trim();
+      document.getElementById('add-fund-btn').disabled = isin.length !== 12;
+    }
+
+    async function doAddFund() {
+      const input = document.getElementById('isin-input');
+      const isin = input.value.trim().toUpperCase();
+      const btn = document.getElementById('add-fund-btn');
+      const status = document.getElementById('add-fund-status');
+
+      if (isin.length !== 12) { toast('Enter a valid 12-character ISIN.', true); return; }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Looking up…';
+      status.textContent = '';
+
+      try {
+        // Scrapes JustETF (or serves a cached snapshot) and adds the fund to the portfolio.
+        const res = await api('POST', `/funds/${encodeURIComponent(isin)}/portfolio`);
+        toast(`Added ${res.isin} to your portfolio${res.cached ? ' (from cache)' : ''}.`);
+        input.value = '';
+        btn.textContent = 'Add fund';
+        btn.disabled = true;
+        // Refresh jobs so the new fund shows up immediately (it is already completed).
+        allJobs = await api('GET', '/upload');
+      } catch (e) {
+        toast(e.message, true);
+        btn.disabled = false;
+        btn.textContent = 'Add fund';
       }
     }
 
