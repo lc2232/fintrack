@@ -129,6 +129,7 @@ class TestDynamoDBInsertSuccess:
             "marketExposure",
             "topHoldings",
             "industryExposure",
+            "source",
         }
         import insert_factsheet
 

@@ -38,6 +38,7 @@ class FundSnapshot(BaseModel):
     name: str
     topHoldings: list[ExposureItem] = Field(default_factory=list)
     marketExposure: list[ExposureItem] = Field(default_factory=list)
+    industryExposure: list[ExposureItem] = Field(default_factory=list)
     scrapedAt: str
     source: str = "justetf"
 
@@ -53,6 +54,7 @@ class JobRecord(BaseModel):
     jobId: str
     status: JobStatus
     weighting: Decimal = Field(default=Decimal("0.0"))
+    source: str | None = None  # "pdf" | "justetf" — distinguishes how the item was added
 
     # Factsheet fields populated upon completion
     isin: str | None = None

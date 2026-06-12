@@ -425,6 +425,12 @@ resource "aws_iam_policy" "fintrack_scraper_api_policy" {
         Effect   = "Allow"
         Action   = "dynamodb:PutItem"
         Resource = aws_dynamodb_table.fintrack_fund_cache_table.arn
+      },
+      {
+        # Allow adding scraped funds to a user's portfolio (factsheet table)
+        Effect   = "Allow"
+        Action   = "dynamodb:PutItem"
+        Resource = aws_dynamodb_table.fintrack_factsheet_table.arn
       }
     ]
   })
@@ -506,7 +512,7 @@ data "aws_ecr_repository" "fintrack-analytics-repository" {
 
 resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
   function_name = "fintrack_analytics_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.24"
+  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.25"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_analytics_api_lambda_role.arn
   timeout       = 60
@@ -525,7 +531,7 @@ data "aws_ecr_repository" "fintrack-scraper-repository" {
 
 resource "aws_lambda_function" "fintrack_scraper_lambda_function" {
   function_name = "fintrack_scraper_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-scraper-repository.repository_url}:v0.1"
+  image_uri     = "${data.aws_ecr_repository.fintrack-scraper-repository.repository_url}:v0.4"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_scraper_api_lambda_role.arn
   timeout       = 60
@@ -534,12 +540,13 @@ resource "aws_lambda_function" "fintrack_scraper_lambda_function" {
   environment {
     variables = {
       DYNAMODB_TABLE  = aws_dynamodb_table.fintrack_fund_cache_table.name
+      FACTSHEET_TABLE = aws_dynamodb_table.fintrack_factsheet_table.name
       CACHE_TTL_DAYS  = "7"
     }
   }
 }
 
-# ============== API Gateway ============== 
+# ============== API Gateway ==============
 
 resource "aws_apigatewayv2_api" "lambda_api" {
   name          = "fintrack_api"
@@ -668,6 +675,16 @@ resource "aws_apigatewayv2_route" "fintrack_scraper_refresh_fund_route" {
   api_id = aws_apigatewayv2_api.lambda_api.id
 
   route_key = "POST /funds/{isin}/refresh"
+  target    = "integrations/${aws_apigatewayv2_integration.fintrack_scraper_integration.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.fintrack_authoriser.id
+}
+
+resource "aws_apigatewayv2_route" "fintrack_scraper_add_portfolio_route" {
+  api_id = aws_apigatewayv2_api.lambda_api.id
+
+  route_key = "POST /funds/{isin}/portfolio"
   target    = "integrations/${aws_apigatewayv2_integration.fintrack_scraper_integration.id}"
 
   authorization_type = "JWT"

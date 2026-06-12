@@ -24,6 +24,10 @@ MOCK_SCRAPED = {
         {"name": "United States", "percentage": Decimal("94.68")},
         {"name": "Ireland", "percentage": Decimal("1.43")},
     ],
+    "industryExposure": [
+        {"name": "Technology", "percentage": Decimal("30.12")},
+        {"name": "Financials", "percentage": Decimal("13.45")},
+    ],
     "source": "justetf",
 }
 
@@ -55,6 +59,7 @@ def aws_credentials():
 @pytest.fixture
 def mocked_aws(aws_credentials):
     os.environ["DYNAMODB_TABLE"] = "fintrack_fund_cache"
+    os.environ["FACTSHEET_TABLE"] = "fintrack_factsheet"
     os.environ["CACHE_TTL_DAYS"] = "7"
 
     with mock_aws():
@@ -65,7 +70,19 @@ def mocked_aws(aws_credentials):
             AttributeDefinitions=[{"AttributeName": "isin", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
-        yield {"table": table}
+        factsheet_table = dynamo.create_table(
+            TableName="fintrack_factsheet",
+            KeySchema=[
+                {"AttributeName": "userId", "KeyType": "HASH"},
+                {"AttributeName": "jobId", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "userId", "AttributeType": "S"},
+                {"AttributeName": "jobId", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield {"table": table, "factsheet_table": factsheet_table}
 
 
 @pytest.fixture
@@ -80,6 +97,21 @@ def refresh_fund_event():
     event_path = os.path.join(BASE_DIR, "events", "apigw_post_fund_refresh_event.json")
     with open(event_path) as f:
         return json.load(f)
+
+
+@pytest.fixture
+def add_portfolio_event():
+    return {
+        "version": "2.0",
+        "routeKey": "POST /funds/{isin}/portfolio",
+        "rawPath": "/funds/IE00B3XXRP09/portfolio",
+        "pathParameters": {"isin": "IE00B3XXRP09"},
+        "requestContext": {
+            "stage": "$default",
+            "authorizer": {"jwt": {"claims": {"sub": "test-user-123"}}},
+            "http": {"method": "POST", "path": "/funds/IE00B3XXRP09/portfolio"},
+        },
+    }
 
 
 @pytest.fixture
@@ -219,6 +251,116 @@ class TestScraperApi:
         assert status == 422
 
 
+class TestAddFundToPortfolio:
+    @patch("scraper_api_handler.scrape_fund")
+    def test_add_fund_writes_completed_job_record(
+        self, mock_scrape, mocked_aws, add_portfolio_event, lambda_context
+    ):
+        mock_scrape.return_value = MOCK_SCRAPED
+        from scraper_api_handler import lambda_handler
+
+        status, payload = _unwrap(lambda_handler(add_portfolio_event, lambda_context))
+
+        assert status == 200
+        assert payload["jobId"] == "justetf-IE00B3XXRP09"
+        assert payload["isin"] == "IE00B3XXRP09"
+        assert payload["source"] == "justetf"
+
+        item = mocked_aws["factsheet_table"].get_item(
+            Key={"userId": "test-user-123", "jobId": "justetf-IE00B3XXRP09"}
+        )["Item"]
+        assert item["status"] == "completed"
+        assert item["source"] == "justetf"
+        assert item["weighting"] == Decimal("0.0")
+        assert item["name"] == MOCK_SCRAPED["name"]
+        assert item["documentDate"] == item["documentDate"]  # scrapedAt copied through
+        assert len(item["topHoldings"]) == 2
+        assert item["topHoldings"][0]["percentage"] == Decimal("7.55")
+        assert len(item["industryExposure"]) == 2
+        assert item["industryExposure"][0]["name"] == "Technology"
+
+    @patch("scraper_api_handler.scrape_fund")
+    def test_add_fund_uses_cache_when_fresh(
+        self, mock_scrape, mocked_aws, add_portfolio_event, lambda_context
+    ):
+        _seed_cache(mocked_aws["table"], fresh=True)
+        from scraper_api_handler import lambda_handler
+
+        status, payload = _unwrap(lambda_handler(add_portfolio_event, lambda_context))
+
+        assert status == 200
+        assert payload["cached"] is True
+        mock_scrape.assert_not_called()
+
+        item = mocked_aws["factsheet_table"].get_item(
+            Key={"userId": "test-user-123", "jobId": "justetf-IE00B3XXRP09"}
+        )["Item"]
+        assert item["name"] == "Cached Fund"
+
+    @patch("scraper_api_handler.scrape_fund")
+    def test_readding_same_isin_overwrites(
+        self, mock_scrape, mocked_aws, add_portfolio_event, lambda_context
+    ):
+        mock_scrape.return_value = MOCK_SCRAPED
+        from scraper_api_handler import lambda_handler
+
+        lambda_handler(add_portfolio_event, lambda_context)
+        lambda_handler(add_portfolio_event, lambda_context)
+
+        items = mocked_aws["factsheet_table"].query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key("userId").eq("test-user-123")
+        )["Items"]
+        assert len(items) == 1
+        assert items[0]["jobId"] == "justetf-IE00B3XXRP09"
+
+    def test_add_invalid_isin_returns_400(self, mocked_aws, lambda_context):
+        from scraper_api_handler import lambda_handler
+
+        event = {
+            "version": "2.0",
+            "routeKey": "POST /funds/{isin}/portfolio",
+            "rawPath": "/funds/BAD/portfolio",
+            "pathParameters": {"isin": "BAD"},
+            "requestContext": {
+                "stage": "$default",
+                "authorizer": {"jwt": {"claims": {"sub": "test-user-123"}}},
+                "http": {"method": "POST", "path": "/funds/BAD/portfolio"},
+            },
+        }
+
+        status, payload = _unwrap(lambda_handler(event, lambda_context))
+        assert status == 400
+        assert "Invalid ISIN" in payload["message"]
+
+    @patch("scraper_api_handler.scrape_fund")
+    def test_add_fund_not_found_returns_404(
+        self, mock_scrape, mocked_aws, add_portfolio_event, lambda_context
+    ):
+        from scraper import FundNotFoundError
+        from scraper_api_handler import lambda_handler
+
+        mock_scrape.side_effect = FundNotFoundError("No fund profile found")
+        status, _ = _unwrap(lambda_handler(add_portfolio_event, lambda_context))
+        assert status == 404
+
+
+SAMPLE_PROFILE_HTML = """
+<html><body>
+  <h1>Vanguard S&P 500 UCITS ETF</h1>
+  <a data-testid="tl_etf-holdings_top-holdings_link_name">Apple</a>
+  <a data-testid="tl_etf-holdings_top-holdings_link_name">NVIDIA Corp.</a>
+  <span data-testid="tl_etf-holdings_top-holdings_value_percentage">6.64%</span>
+  <span data-testid="tl_etf-holdings_top-holdings_value_percentage">7.55%</span>
+  <span data-testid="tl_etf-holdings_countries_value_name">United States</span>
+  <span data-testid="tl_etf-holdings_countries_value_percentage">94.68%</span>
+  <span data-testid="tl_etf-holdings_sectors_value_name">Technology</span>
+  <span data-testid="tl_etf-holdings_sectors_value_name">Financials</span>
+  <span data-testid="tl_etf-holdings_sectors_value_percentage">30.12%</span>
+  <span data-testid="tl_etf-holdings_sectors_value_percentage">13.45%</span>
+</body></html>
+"""
+
+
 class TestScraper:
     def test_validate_isin_normalizes_and_accepts_valid(self):
         from scraper import validate_isin
@@ -230,3 +372,24 @@ class TestScraper:
 
         with pytest.raises(ValueError, match="Invalid ISIN"):
             validate_isin("BAD")
+
+    @patch("scraper.httpx.get")
+    def test_scrape_fund_parses_holdings_countries_and_sectors(self, mock_get):
+        import scraper
+
+        mock_get.return_value = MagicMock(text=SAMPLE_PROFILE_HTML, raise_for_status=lambda: None)
+
+        result = scraper.scrape_fund("IE00B3XXRP09")
+
+        assert result["name"] == "Vanguard S&P 500 UCITS ETF"
+        assert result["topHoldings"] == [
+            {"name": "Apple", "percentage": Decimal("6.64")},
+            {"name": "NVIDIA Corp.", "percentage": Decimal("7.55")},
+        ]
+        assert result["marketExposure"] == [
+            {"name": "United States", "percentage": Decimal("94.68")},
+        ]
+        assert result["industryExposure"] == [
+            {"name": "Technology", "percentage": Decimal("30.12")},
+            {"name": "Financials", "percentage": Decimal("13.45")},
+        ]
