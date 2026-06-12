@@ -73,7 +73,9 @@ def _get_cached_fund(isin: str) -> FundSnapshot | None:
     response = table.get_item(Key={"isin": isin})
     item = response.get("Item")
     if not item:
+        logger.debug("Cache miss", extra={"isin": isin})
         return None
+    logger.debug("Cache hit", extra={"isin": isin})
     return FundSnapshot(**item)
 
 
@@ -92,9 +94,11 @@ def _fetch_and_cache(isin: str) -> FundSnapshot:
 
 
 def _lookup_fund(isin: str, *, force_refresh: bool) -> tuple[FundSnapshot | Response, bool]:
+    logger.info("Looking up fund", extra={"isin": isin, "force_refresh": force_refresh})
     try:
         normalized_isin = validate_isin(isin)
     except ValueError as exc:
+        logger.warning("ISIN validation failed", extra={"isin": isin, "error": str(exc)})
         return (
             Response(
                 status_code=400,
@@ -107,11 +111,16 @@ def _lookup_fund(isin: str, *, force_refresh: bool) -> tuple[FundSnapshot | Resp
     if not force_refresh:
         cached = _get_cached_fund(normalized_isin)
         if cached and _is_cache_fresh(cached.scrapedAt):
+            logger.info("Serving fund from fresh cache", extra={"isin": normalized_isin})
             return cached, True
 
     try:
-        return _fetch_and_cache(normalized_isin), False
+        logger.info("Cache miss/stale — scraping JustETF", extra={"isin": normalized_isin})
+        snapshot = _fetch_and_cache(normalized_isin)
+        logger.info("Fund scraped and cached", extra={"isin": normalized_isin})
+        return snapshot, False
     except FundNotFoundError as exc:
+        logger.warning("Fund not found (404)", extra={"isin": normalized_isin, "error": str(exc)})
         return (
             Response(
                 status_code=404,
@@ -121,6 +130,9 @@ def _lookup_fund(isin: str, *, force_refresh: bool) -> tuple[FundSnapshot | Resp
             False,
         )
     except NoHoldingsDataError as exc:
+        logger.warning(
+            "Fund has no holdings data (422)", extra={"isin": normalized_isin, "error": str(exc)}
+        )
         return (
             Response(
                 status_code=422,
@@ -183,11 +195,26 @@ def add_fund_to_portfolio(user_id, isin: str) -> Any:
     Add a fund (looked up by ISIN via the JustETF scraper) to the authenticated user's
     portfolio so it is analysed alongside PDF-sourced factsheets by GET /analytics/summary.
     """
+    logger.info("Add fund to portfolio requested", extra={"isin": isin, "user_id": user_id})
+
     result, cached = _lookup_fund(isin, force_refresh=False)
     if isinstance(result, Response):
+        logger.info(
+            "Add fund to portfolio aborted — lookup did not return a fund",
+            extra={"isin": isin, "user_id": user_id, "status_code": result.status_code},
+        )
         return result
 
     record = _snapshot_to_job_record(user_id, result)
+    logger.info(
+        "Writing fund to portfolio table",
+        extra={
+            "isin": record.isin,
+            "user_id": user_id,
+            "jobId": record.jobId,
+            "table": FACTSHEET_TABLE,
+        },
+    )
     factsheet_table.put_item(Item=record.model_dump(exclude_none=True))
 
     logger.info(

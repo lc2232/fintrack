@@ -512,7 +512,7 @@ data "aws_ecr_repository" "fintrack-analytics-repository" {
 
 resource "aws_lambda_function" "fintrack_analytics_lambda_function" {
   function_name = "fintrack_analytics_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.24"
+  image_uri     = "${data.aws_ecr_repository.fintrack-analytics-repository.repository_url}:v0.25"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_analytics_api_lambda_role.arn
   timeout       = 60
@@ -531,7 +531,7 @@ data "aws_ecr_repository" "fintrack-scraper-repository" {
 
 resource "aws_lambda_function" "fintrack_scraper_lambda_function" {
   function_name = "fintrack_scraper_lambda_tf"
-  image_uri     = "${data.aws_ecr_repository.fintrack-scraper-repository.repository_url}:v0.1"
+  image_uri     = "${data.aws_ecr_repository.fintrack-scraper-repository.repository_url}:v0.4"
   package_type  = "Image"
   role          = aws_iam_role.fintrack_scraper_api_lambda_role.arn
   timeout       = 60
